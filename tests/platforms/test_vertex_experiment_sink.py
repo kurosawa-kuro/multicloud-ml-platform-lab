@@ -271,3 +271,65 @@ def test_experiment_is_created_before_the_run() -> None:
 
     assert sdk.ensured == ["mcml-dev"]
     assert sdk.created == [("train-0d5f7d2e-1111-4222-8333-444444444444", "mcml-dev")]
+
+
+# --- decorator が inner の任意機能を落とさないこと -------------------------
+
+
+def test_optional_sink_capabilities_are_delegated() -> None:
+    """`merge_run_params` は RunSink の必須契約ではないが、落とすと resume が壊れる。
+
+    `TrackedOperations._merge_job_row_params` は getattr で存在を見るだけなので、
+    decorator が持っていないと**静かに何もせず戻る**。学習成功行の params が空のままになり
+    `run_phase.py vertex register` が止まる（2026-08-02 に実クラウドで踏んだ）。
+    """
+
+    class MergingInner(SpyInner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.merged: list[tuple[str, dict[str, Any]]] = []
+
+        def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
+            self.merged.append((run_id, params))
+            return 1
+
+    inner = MergingInner()
+    sink = VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk())
+
+    sink.merge_run_params("r-1", {"model_artifact_uri": "gs://b/model"})
+
+    assert inner.merged == [("r-1", {"model_artifact_uri": "gs://b/model"})]
+
+
+def test_merge_is_reached_through_the_real_tracked_path() -> None:
+    """本物の `_tracked()` から decorator 越しに merge が届くこと。
+
+    ここを sink 単体テストだけにすると、`getattr` の名前がずれても気付けない。
+    """
+    from core.telemetry.schemas import Stage
+    from platforms.shared.contracts.tracking import TrackedOperations
+
+    merged: list[tuple[str, dict[str, Any]]] = []
+
+    class MergingInner(SpyInner):
+        def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
+            merged.append((run_id, params))
+            return 1
+
+    class Adapter(TrackedOperations):
+        platform = Platform.VERTEX
+
+        def __init__(self, sink: Any) -> None:
+            self._sink = sink
+
+    inner = MergingInner()
+    adapter = Adapter(VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk()))
+
+    adapter._tracked(
+        Stage.TRAIN,
+        {},
+        lambda ctx: ctx.params.update({"model_artifact_uri": "gs://b/model"}),
+        job_owns_success=True,
+    )
+
+    assert merged and merged[0][1]["model_artifact_uri"] == "gs://b/model"

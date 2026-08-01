@@ -146,6 +146,24 @@ class VertexExperimentSink:
         """**必ず inner に委譲する。** 採番の正本を Neon から動かさない。"""
         return self._inner.next_attempt(platform, stage)
 
+    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> Any:
+        """`RunSink` の必須契約ではないが、**中継しないと修正07 の resume が壊れる**。
+
+        `TrackedOperations._merge_job_row_params` は
+        `getattr(self._sink, "merge_run_params", None)` で存在を見るだけなので、
+        decorator が持っていないと **静かに何もせず戻る**。結果、学習成功行の
+        `params` が空のままになり、`run_phase.py vertex register` が
+        「再開できる学習成功 run が無い」で止まる（2026-08-02 に実クラウドで実際に踏んだ）。
+
+        duck-typing で任意機能を拾う設計なので、**decorator を足すたびにここが漏れる**。
+        `tests/platforms/test_vertex_experiment_sink.py` の
+        `test_optional_sink_capabilities_are_delegated` が再発を止める。
+        """
+        merge = getattr(self._inner, "merge_run_params", None)
+        if merge is None:
+            return None
+        return merge(run_id, params)
+
     def _mirror(self, run: MlRun) -> None:
         """Experiments へ1 run 複写する。失敗しても呼び出し元へ伝えない。
 
