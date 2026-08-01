@@ -77,6 +77,65 @@ src/core/ml (単一SHA・依存最小)
 | タスク文書 | 一回性の作業計画・実装タスク | `docs/tasks/` |
 | Claude skills | Claude Code で繰り返し使う作業手順 | `.claude/skills/` |
 
+## 設計の導出順序（5基盤の制約 → 共通MLコードの逆算）
+
+**MLコードは5基盤すべてで共通に使う。だからこそ、MLコードを起点に設計してはならない。**
+依存先である5つのインフラの制約から出発し、「共通MLコードはどうあるべきか」を逆算して
+定義する。以降の全セクション（実行契約の差・Neon 集約・共通ML仕様）はこの導出の詳細である。
+
+### 手順1: 各インフラの制約を実測で確定する
+
+| 基盤 | 実行単位 | 依存の自由度 | 外向き egress | デプロイの意味 |
+|---|---|---|---|---|
+| Vertex | コンテナ（イメージは自前） | 完全（イメージに焼ける） | 開いている | Endpoint（常時課金） |
+| SageMaker | コンテナ（`/opt/ml` 契約・model.tar.gz） | 完全 | 開いている | Endpoint（常時課金） |
+| Azure ML | コンテナ（マウントが1段深い） | 完全 | 開いている | Endpoint（常時課金） |
+| Databricks | **パッケージ**（wheel を ML Runtime へ） | **制約あり**（Runtime プリインストール版と衝突しうる） | 制限（trusted domains / serverless 設定） | Serving（scale-to-zero） |
+| Snowflake | **パッケージ**（zip を warehouse sproc へ） | **強い制約**（Anaconda channel 限定） | **トライアルでは閉**（EAI 不可） | Registry の版切替 |
+
+### 手順2: 2系統の差を認める
+
+AWS / GCP / Azure 系（**Tier A**）と Databricks / Snowflake 系（**Tier B**）は
+扱いが根本的に異なる。差の本質は3つ:
+
+1. **実行単位**: A はコンテナ（実行環境を自前で握る）、B はパッケージ（基盤の Runtime に間借りする）
+2. **依存の所有権**: A はイメージに焼けるので自由、B は基盤側が環境を握るので従うしかない
+3. **egress**: A は開いている、B は宣言的オブジェクト経由か閉
+
+### 手順3: 各差を「どの層で・どう吸収するか」を決める
+
+吸収の答えは3種類ある。**「吸収せず、差として記録する」が本ラボの中心的な選択**
+（差そのものが成果物のため）。
+
+| 差 | 決定 | 層 / 実装 | 番人 |
+|---|---|---|---|
+| 学習の起動契約（AIP_MODEL_DIR / /opt/ml / マウント差） | 吸収する | **シム層**（`docker/training/entrypoint_*.sh`）が同一 CLI へ落とす | シム3枚が同じ `core.ml.cli` を呼ぶ |
+| 推論の HTTP 契約（3基盤3形式） | 吸収する | **境界層**（`core/app` のルート変換）。中心の `predict()` は1つ | `tests/core/test_predictor.py`（5基盤レイアウト parametrize） |
+| 同一性の担保単位（イメージ vs wheel/zip） | 吸収する | **配布層**（`docker/` と wheel/stage。`CODE_REVISION` 焼き込み） | `test_code_revision_parity`（tree hash 一致） |
+| B の依存制約 | 吸収する | **`core/ml` の依存最小化**（→ 手順4） | `test_core_boundaries`（allowlist） |
+| egress の差（direct / collected） | **記録する** | **記録層**が2経路を対等に実装（`job_record` + JSONL fallback + `make collect`）し、`write_path` に残す | 比較クエリ（write_path 内訳） |
+| デプロイの意味論・レジストリの形 | **記録する** | **adapter 層**。port は形だけ揃え、中身の差は隠さない（`ports.py`「port を切る基準」） | 比較レポート 01〜05 |
+| Spot の有無（B に概念が無い） | 吸収する | **config 層**が「効かない基盤を明示列挙して落とす」（黙って捨てない） | `test_platforms_config` |
+| 単一基盤にしかない機能（例: Vertex AI Experiments） | **共通層に置かない** | **その基盤の adapter 内**（`VertexAdapter._tracked` override） | `test_common_layers_do_not_know_the_observer` |
+
+### 手順4: 共通MLコードへの逆算された要求
+
+上の制約から、`core/ml` の形は**選択ではなく帰結**として決まる:
+
+| 要求 | どの制約からの逆算か | 番人 |
+|---|---|---|
+| クラウド SDK / DB ドライバを import しない | B は環境を握れない（Snowflake に psycopg3 は無い）。1基盤でも import できなければ共通コードにならない | `test_core_boundaries` FORBIDDEN_PREFIXES |
+| third-party は lightgbm / numpy / pandas / sklearn / pyarrow のみ | Anaconda channel と ML Runtime の**積集合**に収める | 同 allowlist |
+| 入出力はディレクトリと DataFrame（URI を知らない） | ストレージが5様（GCS/S3/Blob/UC Volume/stage）。データ入力は「DataFrame 自体が境界」で port を重ねない | `ports.py` |
+| 記録は学習から分離（`run.json` manifest → 外側が記録） | B では学習プロセスから Neon へ届かない。**学習コードに記録を混ぜると B で共通性が壊れる** | `job_record` の行所有規約 |
+| CLI + exit code 契約 | シム3枚と sproc の両方から同じ形で呼べる最小の共通面 | `EXIT_CODE_FAILURE_CLASS` |
+| プラットフォーム名で分岐しない | 分岐した瞬間「共通」が嘘になる | `test_core_boundaries`（AST の if 検査） |
+
+> この導出順序を破った実例と是正: 2026-08-02、Vertex AI Experiments 複写を
+> 「複写の仕組み」から設計して共通層（core / TrackedOperations / factory）へフックを
+> 置き、2度作り直した（[decision-log](./decisions/decision-log.md)）。
+> **1基盤にしか実装が無いものを共通層に置きたくなったら、設計の向きが逆になっているサイン。**
+
 ## 実行契約の差（設計の中心）
 
 ### Tier A: 学習側の契約差とシム
@@ -142,6 +201,8 @@ Snowflake
 - 保存先は Neon（数千行なので通常の PostgreSQL で十分）。DDL 正本は `sql/schema.sql`、比較 SELECT の正本は `sql/comparison_queries.sql`、詳細は [05_data_model.md](./05_data_model.md) に定義する。
 
 ## 共通ML仕様（全5基盤で同一）
+
+> この仕様は自由な選択ではなく、「設計の導出順序」手順4の帰結。
 
 ```text
 Data     : sklearn.datasets.fetch_california_housing
