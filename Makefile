@@ -161,6 +161,9 @@ sf-package: stamp-revision ## Snowflake stage 配布用 zip をビルド
 collect-costs: ## cost_snapshots を後追いで埋める（請求反映は1〜2日遅れる）
 	doppler run -- $(PYTHON) scripts/collect_costs.py --all --days 7 --record
 
+pipeline-compile: ## Vertex AI Pipelines の定義をコンパイル（投入はしない・課金ゼロ）
+	doppler run -- $(PYTHON) scripts/compile_pipeline.py
+
 # --- フェーズ実行（Golden Path ステップ2〜3）------------------------------
 # PLATFORM=vertex|sagemaker|azureml|databricks|snowflake
 
