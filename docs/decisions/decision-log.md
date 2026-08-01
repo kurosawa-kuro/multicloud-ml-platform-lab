@@ -296,3 +296,34 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - link: [ports.py](../../src/platforms/shared/contracts/ports.py) /
   [test_vertex_experiment_observer.py](../../tests/platforms/test_vertex_experiment_observer.py) /
   [schema.sql](../../sql/schema.sql)
+
+## 2026-08-02 — 記録スパインを「5基盤×2経路の交差点」まで縮める（owner 指示の徹夜大改修）
+
+- type: design-fix（root cause）
+- owner の診断: 「一つの修正が根本設計を痛めて改修が要り、かつ5基盤それぞれに悪影響を出す。
+  根本から再設計しないと永遠に安定しない」。監査で診断どおりの構造を確認した。
+- 監査結果（波及の実測）: `merge_run_params` は**実装が意味を持つのは NeonRunSink の
+  1つだけ**なのに、core の RunSink 契約の必須メソッドになっており、定義が4箇所
+  （Protocol / Neon 実 / JSONL no-op / RecordingSink 中継）に増殖していた。
+  さらにその呼び出しは**5基盤すべてが継承する `TrackedOperations._tracked` の中**。
+  つまり resume という driver 機能の都合が、(a) core 契約 (b) 全 sink (c) 5基盤の
+  共有基底、の3層へ波及する配線だった。この契約化は自分が2026-08-02朝に
+  「再設計」と称して行ったもので、**片実装の操作を契約で均した時点で inside-out**。
+- 再設計（outside-in の帰結）:
+  1. **RunSink = record_run / next_attempt の2メソッドに固定**。これが direct / collected
+     の2系統がともに意味を持って実装できる唯一の交差点。契約の形は
+     `test_the_contract_is_pinned_to_the_intersection` が**メソッド集合ごと** pin し、
+     太らせる変更は pin の意図的な書き換えなしに通らない
+  2. **受け渡しの永続化は driver 機能へ**（`resume.persist_handoff`。読み側と同居）。
+     系統差はここで吸収せず明示する: direct = merge / collected = **None で明示スキップ**
+     （かつての契約 no-op は「できない」と「まだ無い」を 0 で混同していた）
+  3. 共有基底（TrackedOperations）から merge の関心を全撤去。5基盤スパインは
+     「1操作=1行・失敗も記録・attempt 採番・行所有」だけになった
+- 波及半径の変化: before = RunSink に1メソッド足すと 4ファイル＋5 adapter 共有基底が
+  連動 / after = 契約は pin されており、driver 機能の変更は resume.py と run_phase の
+  呼び出し1箇所に閉じる
+- 検証: make lint pass / make test 605 passed（handoff の新テスト12件を含む。
+  Neon 実 merge の SQL は無変更なので実クラウド再検証は不要 —— 変わったのは呼び出し位置だけ）
+- link: [core/telemetry/tracking.py](../../src/core/telemetry/tracking.py) /
+  [resume.py](../../src/platforms/shared/resume.py) /
+  [test_sink_contract.py](../../tests/core/test_sink_contract.py)

@@ -32,7 +32,12 @@ from core.telemetry.schemas import MlRun, Platform, Status
 from platforms.shared.config import ConfigError
 from platforms.shared.contracts.tracking import artifact_uri_from
 from platforms.shared.factory import build_adapter, build_sink, deploy_reference
-from platforms.shared.resume import ResumeError, latest_artifact_uri, latest_model_reference
+from platforms.shared.resume import (
+    ResumeError,
+    latest_artifact_uri,
+    latest_model_reference,
+    persist_handoff,
+)
 
 EXIT_OK = 0
 EXIT_RUN_FAILED = 1
@@ -131,6 +136,7 @@ def run_steps(
     instance: Callable[[], dict[str, float]],
     artifact_uri: str | None = None,
     model_ref: str | None = None,
+    sink: Any | None = None,
 ) -> list[MlRun]:
     """指定 stage を順に実行する。前段が失敗したらそこで止める。
 
@@ -144,6 +150,10 @@ def run_steps(
         if step == "train":
             run = adapter.submit_training(params)
             train_run = run
+            if run.status is Status.SUCCESS and sink is not None:
+                # 受け渡しの永続化は **driver の責務**（adapter/記録契約の外）。
+                # collected 系統では persist_handoff が明示的にスキップする（resume.py）
+                persist_handoff(run, sink)
         elif step == "register":
             run = adapter.register_model(resolve_artifact_uri(train_run, artifact_uri))
         elif step == "deploy":
@@ -238,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
             instance=lambda: instance_override or sample_instance(args.dataset),
             artifact_uri=artifact_uri,
             model_ref=model_ref,
+            sink=sink,
         )
     except ConfigError as exc:
         print(f"設定エラー: {exc}", file=sys.stderr)

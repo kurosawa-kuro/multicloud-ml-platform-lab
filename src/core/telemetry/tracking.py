@@ -84,32 +84,28 @@ def classify_failure(exc: BaseException) -> FailureClass:
 
 @runtime_checkable
 class RunSink(Protocol):
-    """記録先。実体は core.telemetry.recorder.Recorder。
+    """記録先。**5基盤×2到達経路の交差点だけ**を契約にする。
 
     Protocol にしているのは、Neon 到達不能時に JSONL fallback へ差し替えられる
-    ようにするため（到達経路そのものが比較軸）。
+    ようにするため（到達経路そのものが比較軸）。実装は NeonRunSink（direct）と
+    JsonlRunSink（collected）の2つで、**両方が意味を持って実装できる操作だけ**を置く:
 
-    ## `merge_run_params` を**必須**にしている理由（2026-08-02 の事故を受けて）
+        record_run    … 1試行を1行残す（両経路の存在理由）
+        next_attempt  … 同一 (platform, stage) の過去行数 + 1（friction 計測の土台）
 
-    以前これは契約に無く、`TrackedOperations._merge_job_row_params` が
-    `getattr(sink, "merge_run_params", None)` の**文字列一致**で拾っていた。
-    その結果、それを持たない decorator（Experiments 複写）を1枚挟んだだけで
-    **静かに何もせず戻り**、学習成功行の `params` が空のまま = stage を跨いだ再開が
-    壊れた。ユニットテストは全て緑のままで、実クラウドで初めて露見した。
+    ## この契約を太らせないこと（2026-08-02 の事故2件から）
 
-    「任意機能を名前で拾う」設計は、**実装を1つ足すたびに同じ穴が開く**。
-    契約に入れておけば、忘れた実装は `tests/core/test_sink_contract.py` の
-    適合テストで落ちる。書けない sink は「何もしない」と明示的に書く
-    （`JsonlRunSink` がその例）。
+    かつて `merge_run_params` がここにあった。実装が意味を持つのは Neon だけ
+    （JSONL は追記専用で「既存行の更新」が定義できない）なのに必須契約にした結果、
+    JsonlRunSink に no-op・decorator に中継が生え、**1つの修正が全 sink と
+    5基盤の共有基底に波及する**構造になった。片実装の操作は契約ではなく、
+    それを必要とする機能の側（resume → `platforms/shared/resume.py`）に置く。
+    契約の形は `tests/core/test_sink_contract.py` が **メソッド集合ごと** pin している。
     """
 
     def record_run(self, run: MlRun) -> WritePath: ...
 
     def next_attempt(self, platform: Platform, stage: Stage) -> int: ...
-
-    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
-        """既存 run 行の params へ追記する。戻り値は更新行数（不在なら 0）。"""
-        ...
 
 
 @dataclass

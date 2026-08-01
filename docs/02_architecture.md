@@ -117,6 +117,7 @@ AWS / GCP / Azure 系（**Tier A**）と Databricks / Snowflake 系（**Tier B**
 | デプロイの意味論・レジストリの形 | **記録する** | **adapter 層**。port は形だけ揃え、中身の差は隠さない（`ports.py`「port を切る基準」） | 比較レポート 01〜05 |
 | Spot の有無（B に概念が無い） | 吸収する | **config 層**が「効かない基盤を明示列挙して落とす」（黙って捨てない） | `test_platforms_config` |
 | 単一基盤にしかない機能（例: Vertex AI Experiments） | **共通層に置かない** | **その基盤の adapter 内**（`VertexAdapter._tracked` override） | `test_common_layers_do_not_know_the_observer` |
+| stage 間の受け渡しの永続化（resume 用の後付け merge） | **契約で均さない** | **driver 機能**（`resume.persist_handoff`。direct 系統は merge、collected 系統は None で明示スキップ）。RunSink 契約は record_run / next_attempt の**2メソッドに固定** | `test_the_contract_is_pinned_to_the_intersection` / `test_spine_no_longer_carries_the_merge_concern` |
 
 ### 手順4: 共通MLコードへの逆算された要求
 

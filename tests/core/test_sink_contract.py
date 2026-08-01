@@ -37,31 +37,37 @@ def load(module_name: str, class_name: str) -> type:
     return getattr(module, class_name)
 
 
+SPINE_METHODS = ("record_run", "next_attempt")
+
+
+def test_the_contract_is_pinned_to_the_intersection() -> None:
+    """RunSink の公開メソッド集合を**ごと** pin する。
+
+    契約を太らせる変更（メソッド追加）は、この pin を意図的に書き換えないと通らない。
+    かつて merge_run_params（実装が意味を持つのは Neon だけ）を必須化し、
+    全 sink に no-op / 中継が生えて1修正が全体へ波及した。片実装の操作は
+    契約ではなく機能側（resume.persist_handoff）に置く。
+    """
+
+    public = {
+        name
+        for name, member in inspect.getmembers(RunSink)
+        if not name.startswith("_") and callable(member)
+    }
+
+    assert public == set(SPINE_METHODS), f"RunSink 契約が交差点からずれた: {sorted(public)}"
+
+
 @pytest.mark.parametrize(("module_name", "class_name"), SINK_IMPORTS, ids=lambda v: v)
 def test_every_sink_satisfies_the_protocol(module_name: str, class_name: str) -> None:
-    """`record_run` / `next_attempt` / `merge_run_params` を全て持つこと。
-
-    `isinstance` の Protocol 検査はメソッドの**存在**しか見ないが、
-    今回落ちたのはまさに存在の欠落なので、これで足りる。
-    """
+    """スパイン2メソッドを全 sink が実装していること。"""
     sink_class = load(module_name, class_name)
 
     missing = [
-        name
-        for name in ("record_run", "next_attempt", "merge_run_params")
-        if not callable(getattr(sink_class, name, None))
+        name for name in SPINE_METHODS if not callable(getattr(sink_class, name, None))
     ]
 
     assert not missing, f"{class_name} が RunSink 契約を満たさない（欠落: {missing}）"
-
-
-@pytest.mark.parametrize(("module_name", "class_name"), SINK_IMPORTS, ids=lambda v: v)
-def test_merge_run_params_signature_is_uniform(module_name: str, class_name: str) -> None:
-    """引数名まで揃える。呼び出し側がキーワードで渡しても壊れないように。"""
-    sink_class = load(module_name, class_name)
-    params = list(inspect.signature(sink_class.merge_run_params).parameters)
-
-    assert params[:3] == ["self", "run_id", "params"], f"{class_name}: {params}"
 
 
 def test_no_sink_implementation_is_left_out_of_this_test() -> None:

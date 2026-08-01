@@ -1,4 +1,21 @@
-"""Look up what a previous stage produced, so `resume` needs no arguments.
+"""Stage 間の受け渡し（handoff）の正本 —— 書き側と読み側を1箇所に持つ。
+
+**この機能は記録の契約（RunSink）ではなく、driver（run_phase）の機能である。**
+学習の成功行はジョブが書く規約のため、adapter しか知らない値（model_artifact_uri 等）を
+後からジョブ行へ足さないと、stage を跨いだ再開ができない。
+
+系統差はここで**吸収せず、明示する**（02_architecture「設計の導出順序」手順3）:
+
+    direct 系統（Tier A）  : ジョブ行が既に Neon にある → persist_handoff が merge する
+    collected 系統（Tier B）: 行は `make collect` 後に現れる → merge する相手が無い。
+                              受け渡し値は config から決定的に導出するか明示指定する
+
+かつてこの書き側は RunSink 契約の `merge_run_params` として全 sink に強制され、
+JSONL には no-op が生えていた。**片系統にしか意味の無い操作を契約で均すと、
+非対称が silent no-op に化けて事故になる**（2026-08-02 に decorator がこれを落として
+再開が壊れた）。非対称は隠さず、この1箇所で扱う。
+
+Look up what a previous stage produced, so `resume` needs no arguments.
 
 `run_phase.py <platform> resume` re-runs register → deploy → predict against an
 already-trained model. Until now the caller had to supply the artifact URI by
@@ -22,12 +39,13 @@ exactly what happened on 2026-08-01, and it is the invariant
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
-from core.telemetry.schemas import Platform, Stage
+from core.telemetry.schemas import MlRun, Platform, Stage
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -144,3 +162,45 @@ def latest_model_reference(platform: Platform, *, connect: Any) -> ResumePoint:
         f"{platform.value}: 再開できる登録成功 run が無い。"
         f"`resume` で register から通すか --model-version を渡す"
     )
+
+
+# --- 書き側（persist）------------------------------------------------------
+
+
+@runtime_checkable
+class SupportsHandoffMerge(Protocol):
+    """ジョブ行へ params を後付けできる記録先（実体は NeonRunSink だけ）。
+
+    RunSink 契約には**入れない**（片実装。core/telemetry/tracking.py の docstring）。
+    isinstance 判定をこの1箇所に閉じ込め、満たさない sink は「collected 系統」として
+    **明示的にスキップする**。かつての getattr 拾いとの違いは、スキップが仕様として
+    ログに出ること（silent no-op にしない）。
+    """
+
+    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int: ...
+
+
+def persist_handoff(run: MlRun, sink: Any) -> int | None:
+    """train 成功 run の受け渡し値をジョブ行へ足す。**driver が train の直後に呼ぶ。**
+
+    戻り値: merge した行数 / None = この sink では merge できない（collected 系統）。
+    telemetry は非致命（docs/06_error_policy.md）。失敗しても driver の結果を変えない。
+
+    0 行は異常ではない（direct 系統でもジョブ行の INSERT が僅かに遅れうる）。
+    None と 0 を区別して返すのは、「できない」と「相手がまだ居ない」が別だから。
+    """
+    if not run.params:
+        return 0
+    if not isinstance(sink, SupportsHandoffMerge):
+        logging.getLogger("platforms.resume").info(
+            "handoff は永続化しない（collected 系統: %s）。再開は決定的パスか明示指定で",
+            type(sink).__name__,
+        )
+        return None
+    try:
+        return sink.merge_run_params(run.run_id, dict(run.params))
+    except Exception:  # noqa: BLE001 - 記録の失敗で学習結果を変えない
+        logging.getLogger("platforms.resume").warning(
+            "run %s の handoff 永続化に失敗", run.run_id, exc_info=True
+        )
+        return 0

@@ -74,10 +74,6 @@ class RecordingSink:
     def next_attempt(self, platform: Platform, stage: Stage) -> int:
         return self._inner.next_attempt(platform, stage)
 
-    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
-        """decorator なので中継する。落とすと `RunSink` 契約を満たさない。"""
-        return self._inner.merge_run_params(run_id, params)
-
 
 class TrackedOperations:
     """adapter の基底。`platform` と `_sink` を持つクラスに `_tracked()` を与える。
@@ -123,6 +119,11 @@ class TrackedOperations:
         ジョブの中から書かれる行（platforms.neon.job_record）が正であり、
         そこにしか「ジョブから Neon へ届いたか」= write_path の真値が無いため。
         投入自体が失敗した場合はジョブが起動していないので、ここが唯一の記録者になる。
+
+        戻り値の run には adapter が知る params（model_artifact_uri 等）が入っている。
+        **それをジョブ行へ永続化するのはこの基底の仕事ではない**（driver の責務。
+        `resume.persist_handoff`）。かつてここで sink.merge_run_params を呼んでおり、
+        Neon 専用の関心が5基盤の共有基底と全 sink 契約に波及していた。
         """
         sink = RecordingSink(self._sink, suppress_success=job_owns_success)
         try:
@@ -135,36 +136,8 @@ class TrackedOperations:
             )
         if sink.last is None:  # pragma: no cover - track が必ず記録する
             raise RuntimeError("track() が MlRun を記録しなかった")
-        if job_owns_success and sink.last.status is Status.SUCCESS:
-            self._merge_job_row_params(sink.last)
         return sink.last
 
-    def _merge_job_row_params(self, run: MlRun) -> None:
-        """ジョブが書いた成功行へ、adapter しか知らない params を足す。
-
-        `model_artifact_uri` は **投入した adapter にしか分からない**
-        （ジョブ側は自分の成果物がどの URI で参照されるかを知らない）。
-        ここで足さないと `ml_runs` の学習成功行は `params={}` のままになり、
-        register / deploy を単体で再開できず **中断のたびに train からやり直し**になる
-        （2026-08-01 に Azure で実際に踏んだ。docs/comparison/04_azureml.md）。
-
-        **telemetry は非致命**（docs/06_error_policy.md）。足せなくても
-        adapter の結果は変えない。行がまだ無い（collected 経路で `make collect`
-        待ち）ケースも異常ではないので、静かに 0 件で終わる。
-
-        以前は `getattr(self._sink, "merge_run_params", None)` で**任意機能として
-        名前で拾って**いた。それを持たない decorator を1枚挟んだだけで静かに何も
-        しなくなり、再開が壊れた（2026-08-02・実クラウドで露見）。
-        `RunSink` の必須契約に格上げしたので、ここは素直に呼ぶ。
-        """
-        if not run.params:
-            return
-        try:
-            self._sink.merge_run_params(run.run_id, dict(run.params))
-        except Exception:  # noqa: BLE001 - 記録の失敗で学習結果を変えない
-            logging.getLogger(f"platforms.{self.platform.value}").warning(
-                "run %s の params を足せなかった", run.run_id, exc_info=True
-            )
 
 
 # 「見つからない」を表す SDK 側の言い回し。ここに無い例外は**確認不能**として扱う。
