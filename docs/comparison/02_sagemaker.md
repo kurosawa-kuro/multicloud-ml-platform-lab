@@ -3,7 +3,7 @@
 > 実測日 2026-08-01 / account `123456789012` / region `ap-northeast-1` /
 > `code_revision = 7e6dc1c00f96dd716d82299981c017900e29df5a`
 > 実行手順と合否判定: [../runbooks/動作検証-sagemaker.md](../runbooks/動作検証-sagemaker.md)
-> 着手前に潰した分: [../tasks/05_done/sagemaker-phase-precheck.md](../tasks/05_done/sagemaker-phase-precheck.md)
+> 着手前に潰した分: sagemaker-phase-precheck.md
 
 Tier: A（コンテナ実行型・統一単位 = 学習イメージ）
 
@@ -80,7 +80,7 @@ endpoint `ml.t2.medium` 30）。「申請に要した時間」は本アカウン
 | 4 | `terraform destroy` が `Model Package Group ... cannot be deleted because it still contains Model Packages` | 削除順序 / destroy attempt 1 | SDK が作った版を先に `delete-model-package` してから destroy を再実行 |
 | 5 | `terraform init` が backend の bucket 未指定で通らない | 準備 | `backend.tf` が partial config で、AWS 側に state バケットが無かった（GCP は既存を直書き）。手で作って `-backend-config="bucket=..."` を渡す。**この1手が Tier A で AWS だけに要る** |
 | 6 | 残留検査に `sagemaker_model` が無かった | 実装漏れ | teardown は**同一プロセスで作った** Model / EndpointConfig しか消せない設計なので、別プロセスで叩くと Model が残る。検査項目に無ければ「残留ゼロ」の嘘になるところだった（Vertex の `registered_model` と同型の穴）。検査を追加 |
-| 7 | 残留検査が本ラボ以外のリソースを数えうる状態だった | 実装漏れ（着手前に発見） | `check_sagemaker` に `LAB_NAME_PREFIX` の絞り込みが無く、無関係な Endpoint が **FAIL＝嘘の赤**になる。Vertex が誤検出12件を出した穴と同型。着手前に修正（[precheck](../tasks/05_done/sagemaker-phase-precheck.md)） |
+| 7 | 残留検査が本ラボ以外のリソースを数えうる状態だった | 実装漏れ（着手前に発見） | `check_sagemaker` に `LAB_NAME_PREFIX` の絞り込みが無く、無関係な Endpoint が **FAIL＝嘘の赤**になる。Vertex が誤検出12件を出した穴と同型。着手前に修正（precheck） |
 
 **1・3 は準備段階で予告できていた/できなかったの差が出た。**
 1（非 root）はローカルの Docker で同条件を再現して**着手前に予告**し、実クラウドで的中した。

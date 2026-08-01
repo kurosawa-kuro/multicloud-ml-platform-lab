@@ -14,7 +14,7 @@ SDK に残る      : ジョブ実行トリガ / MLflow run / モデルバージ�
 移植元: ML/study-snowflake-databricks/src/databricks_job_trigger.py（Jobs API
 `run-now` の形）+ TMP/terraform-provider-databricks の docs（serving の
 entity_name + entity_version + workload_size + scale_to_zero の組）。
-docs/tasks/02_backlog/reuse-asset-import-map.md A-4。
+流用元: kaggle-bronze-gcp の Databricks 実行経路。
 
 **ジョブ定義は Terraform が持ち、adapter は起動するだけ**（境界の原則）。
 `jobs/create` を adapter 側でやると、Terraform 網羅度の比較が壊れる

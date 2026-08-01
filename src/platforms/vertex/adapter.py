@@ -7,7 +7,7 @@ SDK に残る      : Custom Job / Experiment / Model Upload / Deploy
 entrypoint シムは docker/training/entrypoint_vertex.sh。
 
 移植元: ML/kaggle-bronze-gcp/src/runner/{experiment/vertex_run.py, model/register.py,
-model/deploy.py}（docs/tasks/02_backlog/reuse-asset-import-map.md A-1）
+model/deploy.py}（流用元: kaggle-bronze-gcp）
 
 移植時に変えた点:
   - YAML 設定の読み込みを持たない。設定は VertexConfig（呼び出し側が組む）。

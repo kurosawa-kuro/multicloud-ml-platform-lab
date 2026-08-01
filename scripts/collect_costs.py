@@ -6,7 +6,7 @@
 
 移植元: ML/kaggle-bronze-gcp/src/runner/ops/costs.py（ジョブ単位のコスト概算記録）+
 ML/eks-app-mlops-platform/apps/aws-resource-monitor（Cost Explorer の月次×サービス粒度）。
-docs/tasks/02_backlog/reuse-asset-import-map.md C。
+流用元: eks-app-mlops-platform の aws-resource-monitor。
 
 **各基盤で取得経路がまったく違う**こと自体が比較材料:
 

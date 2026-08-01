@@ -9,7 +9,7 @@
     クエリに載っていること
 
 実 PostgreSQL 上での実行確認は Phase 1 の Neon 到達時に行う
-（docs/tasks/02_backlog/仕様準拠監査-2026-08-01.md の Verification）。
+（仕様準拠監査 2026-08-01 の Verification 項目）。
 """
 
 from __future__ import annotations

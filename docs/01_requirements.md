@@ -100,7 +100,7 @@
 - 確定した要件だけをこの文書へ反映する。
 - 要件変更に伴う未実装作業は `docs/tasks/README.md` から追跡できる状態にする。
 - 未確定論点（各 Phase 開始前の precheck。実アカウントが要るものだけが残っている）:
-  - [tasks/05_done/databricks-phase-precheck.md](./tasks/05_done/databricks-phase-precheck.md)
-  - [tasks/05_done/snowflake-phase-precheck.md](./tasks/05_done/snowflake-phase-precheck.md)
+  - databricks-phase-precheck.md
+  - snowflake-phase-precheck.md
 - 確認済み（2026-07-31・結論は [02_architecture.md](./02_architecture.md) と各モジュールのコメントへ反映済み）: Azure ML Workspace の必須依存（Storage / Key Vault / **App Insights** / identity。ACR は任意）／ Neon pooled endpoint の仕様
-- 既存資産の流用元と移植時の改変の記録: [tasks/05_done/reuse-asset-import-map.md](./tasks/05_done/reuse-asset-import-map.md)
+- 既存資産の流用元と移植時の改変の記録: reuse-asset-import-map.md

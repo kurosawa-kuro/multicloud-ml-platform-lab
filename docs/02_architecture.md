@@ -41,7 +41,7 @@ src/core/ml (単一SHA・依存最小)
 | Phase 4 | Azure ML | 条件付き（Phase 3 完了時に go/no-go）。Tier A 3つ目で限界効用が最も低い |
 | Phase 5 | Snowflake | SnowPro Core 着手がトリガ。トライアル期限が実質のタイムボックスのため分散実行せず一気に完走 |
 
-既存リポジトリからの流用元の実体（`src/core/ml` の母体 = starter-kit `python/ml` の California Housing + LightGBM 実装、Phase 1 の母体 = `kaggle-bronze-gcp`、destroy-all / contract test = `gcp-search-mlops-gke` 等）と移植時に変えた点は [tasks/05_done/reuse-asset-import-map.md](./tasks/05_done/reuse-asset-import-map.md) に記録している。
+既存リポジトリからの流用元の実体（`src/core/ml` の母体 = starter-kit `python/ml` の California Housing + LightGBM 実装、Phase 1 の母体 = `kaggle-bronze-gcp`、destroy-all / contract test = `gcp-search-mlops-gke` 等）と移植時に変えた点は reuse-asset-import-map.md に記録している。
 
 ## 構成要素
 

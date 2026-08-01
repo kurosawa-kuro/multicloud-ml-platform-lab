@@ -76,7 +76,7 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 撤退条件 (stop/revert): 有償プランへ移行するか SP を発行できると分かった時点で移行する。
   PAT の失効で Phase 3 が止まったら、延長せず**期限を計測値として記録**してから再発行する。
 - 結果 (outcome): open
-- link: [credentials.md §6](../runbooks/credentials.md) / [databricks-phase-precheck.md](../tasks/05_done/databricks-phase-precheck.md)
+- link: [credentials.md §6](../runbooks/credentials.md) / databricks-phase-precheck.md
 
 ## 2026-08-01 — Azure を無料試用版から Pay-As-You-Go へアップグレードする（owner 承認）
 

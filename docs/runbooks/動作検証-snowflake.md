@@ -28,7 +28,7 @@
 | ENV / PLATFORM | `sf-dev` / `snowflake` |
 | 資格情報 | キーペア認証。`SNOWFLAKE_*` 8件（[credentials.md §5](./credentials.md)）。**Terraform は `ACCOUNTADMIN` / adapter は `MCML_DEV_ROLE`** |
 | 実装 | `src/platforms/snowflake/adapter.py` / `src/platforms/snowflake/sproc_handler.py` |
-| 着手前 | [snowflake-phase-precheck.md](../tasks/05_done/snowflake-phase-precheck.md) を消化してから |
+| 着手前 | snowflake-phase-precheck.md を消化してから |
 | タイムボックス | **トライアル期限が実質の期限**。分散実行せず一気に完走する |
 
 共通の前提・8項目の定義・停止条件は [README.md](./README.md)。以下は Snowflake 固有分のみ。

@@ -1,7 +1,7 @@
 # GitHub 流用可能リポジトリ調査（生ブレスト退避）
 
 > **退避元**: チャット貼り付け（2026-07-31 に distill-spec で退避）
-> **蒸留先**: [../tasks/05_done/reuse-asset-import-map.md](../tasks/05_done/reuse-asset-import-map.md)「移植の記録」/ precheck タスク / `01_requirements.md` 非対象
+> **蒸留先**: reuse-asset-import-map.md「移植の記録」/ precheck タスク / `01_requirements.md` 非対象
 > **権威**: この文書は archive であり権威順位は最下位。リポジトリの実在・ライセンスは未検証（着手時に確認）。
 
 ---

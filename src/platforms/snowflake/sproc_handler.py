@@ -48,7 +48,7 @@ from core.telemetry.sinks import JSONL_FILENAME, JsonlRunSink
 from core.telemetry.tracking import PLATFORM_TIER
 
 # 学習入力テーブル。sklearn 版 California Housing のみを使う
-# （Kaggle 版は列も目的変数スケールも別物。snowflake-phase-precheck.md の罠）。
+# （Kaggle 版は列も目的変数スケールも別物。Snowflake 事前調査で判明した罠）。
 DEFAULT_SOURCE_TABLE = "CALIFORNIA_HOUSING"
 
 

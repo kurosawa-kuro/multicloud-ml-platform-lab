@@ -6,7 +6,7 @@
 | ENV / PLATFORM | `dbx-dev` / `databricks` |
 | 資格情報 | `DATABRICKS_HOST` / `DATABRICKS_TOKEN`（SDK が env から拾う）。[credentials.md §6](./credentials.md) |
 | 実装 | `src/platforms/databricks/adapter.py` / `src/platforms/databricks/job_main.py` |
-| 着手前 | [databricks-phase-precheck.md](../tasks/05_done/databricks-phase-precheck.md) を消化してから |
+| 着手前 | databricks-phase-precheck.md を消化してから |
 
 > ## ✅ 完走（2026-08-01）— 8項目すべて達成
 >
@@ -55,7 +55,7 @@ Volume へ置き、ジョブ定義は Terraform が持ち、adapter は起動し
 ## 0-b. 着手前ブロッカー（2026-08-01 の準備で判明・**未解決**）
 
 先に潰さないと ①・④ で確実に止まる。実測の根拠は
-[databricks-phase-precheck.md](../tasks/05_done/databricks-phase-precheck.md)「実測」。
+databricks-phase-precheck.md「実測」。
 
 ### B-1. 資格情報 —— ✅ **解決済み（2026-08-01）**
 

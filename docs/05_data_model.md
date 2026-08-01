@@ -14,7 +14,7 @@
 
 | データ | 置き場所 | 備考 |
 |---|---|---|
-| 入力データ | `fetch_california_housing` → **Parquet 化して各基盤のストレージへ配置**（GCS / S3 / Blob / UC Volume / stage） | fixture。sklearn 版のみ（Kaggle 版混入禁止 → [snowflake-phase-precheck](./tasks/05_done/snowflake-phase-precheck.md)） |
+| 入力データ | `fetch_california_housing` → **Parquet 化して各基盤のストレージへ配置**（GCS / S3 / Blob / UC Volume / stage） | fixture。sklearn 版のみ（Kaggle 版混入禁止 → snowflake-phase-precheck） |
 | モデル成果物 | 各基盤の artifact 置き場: `model.txt` / `metrics.json` / `feature_importance.csv` / `run.json` | run.json = run 同定 manifest（run_id / code_revision / metrics / artifact_uri） |
 | 計測データ（正本） | **Neon PostgreSQL**（下記3テーブル） | 全基盤の到達点。SELECT だけで比較できる状態を保つ |
 | fallback 計測データ | 各基盤ストレージ上の JSONL → `make collect` で Neon へ流し込み | 使った事実を `write_path='collected'` で記録 |

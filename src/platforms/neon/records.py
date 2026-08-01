@@ -2,7 +2,7 @@
 
 sklearn.datasets.fetch_california_housing の列を snake_case に落としたもの。
 Kaggle / handson-ml 版（OCEAN_PROXIMITY 等・One-Hot あり）は列も目的変数スケールも
-別物なので混入させない（docs/tasks/02_backlog/snowflake-phase-precheck.md）。
+別物なので混入させない（Snowflake の事前調査で確認済み）。
 """
 
 from __future__ import annotations

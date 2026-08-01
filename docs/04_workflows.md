@@ -1,6 +1,6 @@
 # 04 ワークフロー
 
-> `Makefile` のターゲットはローカル系・フェーズ実行系とも実装済み。**5基盤すべて完走済み（2026-08-01）**で、結論は [comparison/selection-checklist.md](./comparison/selection-checklist.md)。着手時点のギャップ一覧は [tasks/05_done/仕様準拠監査-2026-08-01.md](./tasks/05_done/仕様準拠監査-2026-08-01.md)（クローズ済み）。
+> `Makefile` のターゲットはローカル系・フェーズ実行系とも実装済み。**5基盤すべて完走済み（2026-08-01）**で、結論は [comparison/selection-checklist.md](./comparison/selection-checklist.md)。着手時点のギャップ一覧は 仕様準拠監査-2026-08-01.md（クローズ済み）。
 >
 > **本文書は5基盤共通の骨格**（make ターゲットの並び）。基盤ごとに違う実手順と合否判定は [runbooks/](./runbooks/README.md) の動作検証 runbook を見る。配布物・入出力・deploy の有無・推論 payload・残留はすべて基盤ごとに違うので、ここでは共通化しない。
 

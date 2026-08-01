@@ -10,7 +10,7 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 - 主要技術: Python 3.12 / LightGBM / FastAPI / Terraform / Neon PostgreSQL。詳細は `docs/01_requirements.md` と `docs/02_architecture.md`。
 - 状態（2026-08-01）: **5基盤すべて実測完了**（Phase 1〜5 とも完了条件 8/8）。RMSE `0.4368055090296257` と 1件推論の予測値 `4.183217948107466` は5基盤で一致し、差が出たのは到達までの経路のみ。結論は `docs/comparison/selection-checklist.md`（主成果物）、残留は `docs/comparison/residual-resources.md`、基盤別の一次記録は `docs/comparison/01`〜`05`。
 - **実測値は書き換えない。** 各基盤ページは「予想 → 実測 → 差分」で書かれており、外れた予想こそが成果物。後から予想を実測に合わせて直さない。再実行して値が変わったら追記して並べる。
-- 未消化の課題は `docs/tasks/02_backlog/` に残っているものだけ（消化済みは `05_done/` へ移動済み）。流用元と移植時の改変は `docs/tasks/05_done/reuse-asset-import-map.md` に記録済み。
+- 未消化の課題は `docs/tasks/02_backlog/` に残っているものだけ（消化済みは `05_done/` へ移動済み）。流用元と移植時の改変は各 adapter のモジュール docstring に記録済み。
 
 ## セットアップ / 主要コマンド
 

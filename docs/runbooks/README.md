@@ -66,7 +66,7 @@
 Snowflake は External Access Integration がトライアルで作れない）。
 
 構造差の一次情報は
-[reuse-asset-import-map.md](../tasks/05_done/reuse-asset-import-map.md)「実装で確定した比較材料」。
+reuse-asset-import-map.md「実装で確定した比較材料」。
 結論は [comparison/selection-checklist.md](../comparison/selection-checklist.md)、
 残留は [comparison/residual-resources.md](../comparison/residual-resources.md)。
 

@@ -23,7 +23,7 @@ setup:
 #   doppler secrets --only-names
 # 差分が出たら、本ラボが使うキーなら追記し、他リポのキーなら放置してよい。
 #
-# 【命名規則】3 層（2026-08-01 再設計。docs/tasks/05_done/doppler-key名の再設計.md）
+# 【命名規則】3 層（2026-08-01 再設計）
 #   L1 SDK 標準名  : SDK / CLI / provider が固定名で読む値は、その名前のまま使う（改名禁止）
 #                    AWS_* / GOOGLE_CLOUD_* / AZURE_* / SNOWFLAKE_* / DATABRICKS_* /
 #                    NEON_API_KEY / KAGGLE_API_TOKEN / DOPPLER_TOKEN

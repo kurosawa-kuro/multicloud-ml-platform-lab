@@ -7,7 +7,7 @@ SDK に残る      : Command Job / Model 登録 / Managed Online Endpoint 更新
 実行契約: command job の inputs / outputs マウントパス（引数は自由）。推論は /score。
 entrypoint シムは docker/training/entrypoint_azureml.sh。
 
-移植元: ローカル資産にゼロ（reuse-asset-import-map.md A-3）。
+移植元: ローカル資産にゼロ（流用元なし）。
 TMP/azureml-examples の CLI v2 Command Job YAML を Python SDK v2（azure-ai-ml）へ
 読み替えた新規実装。Vertex / SageMaker adapter と同じ形に揃えてある。
 

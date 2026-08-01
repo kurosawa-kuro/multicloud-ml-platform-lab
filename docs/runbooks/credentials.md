@@ -8,7 +8,7 @@
 > `NEON_API_KEY` `KAGGLE_API_TOKEN` `DOPPLER_TOKEN`）／ **L2** 固定名を持たない値は
 > `<SERVICE>_<QUALIFIER…>_<TYPE>`（`NEON_MULTICLOUD_*_URI`）／ **L3** 本リポのコードだけが読む
 > 入力値は `<REPO>_<AREA>_<FIELD>`（`MCML_TF_*`）。機能カテゴリ接頭辞（`AI_`/`DB_`/`ML_`/`NOTIFY_`）は
-> 使わない。詳細は [doppler-key名の再設計.md](../tasks/05_done/doppler-key名の再設計.md)。
+> 使わない。詳細は doppler-key名の再設計.md。
 
 ## 0-a. 実識別子を repo に書かない（2026-08-02 追加）
 
@@ -210,7 +210,7 @@ scope を `all-apis` にしたのは、**トークンの API scope は本ラボ�
 Vertex の IAM 試行回数と並べたときに比較が濁る。
 
 > 注: `cloud-ml-lab/dev` には別文脈の `DWH_DATABRICKS_TOKEN` が同居していたが、消費者が見つからないため
-> 2026-08-01 に削除した（[doppler-key名の再設計.md](../tasks/05_done/doppler-key名の再設計.md)）。
+> 2026-08-01 に削除した（doppler-key名の再設計.md）。
 
 ### OAuth サービスプリンシパルを見送り、PAT を Doppler に置く（方針変更）
 
@@ -220,7 +220,7 @@ Vertex の IAM 試行回数と並べたときに比較が濁る。
 `make` の各ターゲットは `doppler run --` 経由なので、保管先も `env/secret.yaml` ではなく Doppler。
 
 - **PAT の有効期限を必ず記録する。** Snowflake のトライアル期限と同じく Phase 3 の
-  実行可能期間を直接決める（[databricks-phase-precheck.md](../tasks/05_done/databricks-phase-precheck.md)）
+  実行可能期間を直接決める（databricks-phase-precheck.md）
 - SP を作れると分かったら移行する。判断は
   [decision-log.md](../decisions/decision-log.md) 2026-08-01
 

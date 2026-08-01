@@ -15,7 +15,7 @@ entrypoint シムは docker/training/entrypoint_sagemaker.sh。
 移植元: ML/eks-app-mlops-platform-v2/mlops/src/train.py（boto3 の S3 往復パターン）+
 TMP/amazon-sagemaker-ml-pipeline-deploy-with-terraform（Training → Model →
 EndpointConfig → Endpoint の依存順序）。
-docs/tasks/02_backlog/reuse-asset-import-map.md A-2。
+流用元: eks-app-mlops-platform の SageMaker デプロイ手順。
 
 **sagemaker Python SDK ではなく boto3 の低レベル API を使う。** 理由は2つ:
   - SDK の Estimator は script mode を前提に多くを隠す。本ラボは BYOC 統一が要件

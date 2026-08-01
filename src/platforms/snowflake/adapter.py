@@ -16,7 +16,7 @@ TMP/snowflake-ml-example-project（外部オーケストレータ実行方式）
 TMP/snowflake-ml-python（Registry の API を実物で確認: `Registry(session, database_name=,
 schema_name=)` / `log_model(model, model_name=, version_name=, comment=, metrics=)` /
 `ModelVersion.run(X, function_name=)` / `Model.default` setter）。
-docs/tasks/02_backlog/reuse-asset-import-map.md A-5。
+流用元: gcp-search-mlops-gke の Snowflake 検証。
 
 **発見（比較レポート行き）: Snowflake には「デプロイ」に相当するリソースが無い。**
 モデルを登録した時点で warehouse から SQL で呼べるため、Tier A の
@@ -32,7 +32,7 @@ docs/tasks/02_backlog/reuse-asset-import-map.md A-5。
   - 残留候補: Time Travel / Fail-safe / カタログ内オブジェクト / stage 成果物。
     **Fail-safe（7日）は設定で消せない**ので teardown 後も必ず残る。
   - ⚠️ データは sklearn 版 California Housing のみ。Snowflake-Labs の quickstart は
-    Kaggle 版で列も目的変数スケールも別物（snowflake-phase-precheck.md の罠）。
+    Kaggle 版で列も目的変数スケールも別物（Snowflake 事前調査で判明した罠）。
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ SPROC_HANDLER = "platforms.snowflake.sproc_handler.main"
 # ⚠️ Snowflake の PACKAGES 句が範囲指定子（>=,<）を受けるかは未確認
 # （公式ドキュメントの例は `pkg==x.y.z` の完全一致のみ）。受けない場合は
 # Phase 5 の precheck で channel の実提供版を確認し `lightgbm==4.6.x` 形へ
-# 書き換える（docs/tasks/02_backlog/snowflake-phase-precheck.md 項目5）。
+# 書き換える（Snowflake 事前調査の項目5）。
 #
 # **pyarrow は必須**。`session.table().to_pandas()` は connector の pandas 経路を通り、
 # その実装が pyarrow を要求する（2026-08-01 実測: 入れないと warehouse 内で

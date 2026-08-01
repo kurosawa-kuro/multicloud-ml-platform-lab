@@ -18,14 +18,14 @@
 | リージョン | ap-northeast-1（Doppler の `AWS_DEFAULT_REGION` と一致させる） |
 | 資格情報 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`（Doppler）。[credentials.md §3](./credentials.md) |
 | 実装 | `src/platforms/sagemaker/adapter.py`（**boto3 低レベル API**）/ `docker/training/entrypoint_sagemaker.sh` |
-| 着手前 | [sagemaker-phase-precheck.md](../tasks/05_done/sagemaker-phase-precheck.md) を消化してから |
+| 着手前 | sagemaker-phase-precheck.md を消化してから |
 | 位置づけ | 実行契約が3基盤で最も厳しい（パス固定・文字列限定）。Vertex との差が最初の比較材料 |
 
 共通の前提・8項目の定義・停止条件は [README.md](./README.md)。以下は SageMaker 固有分のみ。
 
 ## 0. 着手前ブロッカー（2026-08-01 の準備で判明）
 
-根拠は [sagemaker-phase-precheck.md](../tasks/05_done/sagemaker-phase-precheck.md)。
+根拠は sagemaker-phase-precheck.md。
 3件とも owner 判断。**先に潰さないと ① で止まるか、計測が濁る。**
 
 | # | 内容 | 処置 | 2026-08-01 の結末 |

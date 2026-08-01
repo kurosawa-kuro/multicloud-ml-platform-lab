@@ -19,7 +19,6 @@
 | [tasks/README.md](./tasks/README.md) | 今日やること、次にやること、完了したことを管理する |
 | [tasks/03_active/refactoring-candidates.md](./tasks/01_active/refactoring-candidates.md) | 常時見る cleanup / refactoring 候補 |
 | [comparison/selection-checklist.md](./comparison/selection-checklist.md) | **主成果物**。5基盤の判断軸を実測で埋めた選定表（2026-08-01 完成） |
-| [tasks/05_done/reuse-asset-import-map.md](./tasks/05_done/reuse-asset-import-map.md) | 流用元の記録と、コード実測で確定した5基盤の構造差（消化済み） |
 | [04_workflows.md](./04_workflows.md) | 作業開始、検証、リリース前確認のコマンド |
 | [07_test_strategy.md](./07_test_strategy.md) | タスク完了前に通す品質ゲート |
 

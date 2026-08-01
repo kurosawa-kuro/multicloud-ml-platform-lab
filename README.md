@@ -97,4 +97,4 @@ make test     # pytest（クラウド資格情報なしで走る）
 - [`docs/comparison/selection-checklist.md`](docs/comparison/selection-checklist.md) — **主成果物**。5基盤の判断軸を実測で埋めた選定表
 - [`docs/comparison/residual-resources.md`](docs/comparison/residual-resources.md) — 撤退後に何が残ったか（5基盤横断）
 - [`docs/runbooks/`](docs/runbooks/README.md) — 基盤ごとの実手順と合否判定（再実行するときの入口）
-- [`docs/tasks/05_done/reuse-asset-import-map.md`](docs/tasks/05_done/reuse-asset-import-map.md) — 既存資産・外部OSSの流用元と、移植時に変えた点の記録
+- 既存資産・外部OSSの流用元と移植時に変えた点は、各 adapter のモジュール docstring に記録
