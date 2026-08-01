@@ -1,0 +1,10 @@
+{
+  "deny": [
+    "projects delete",
+    "billing accounts",
+    "iam service-accounts keys create",
+    "secrets versions access",
+    "auth print-access-token",
+    "auth print-identity-token"
+  ]
+}

@@ -1,0 +1,140 @@
+setup:
+  project: cloud-ml-lab
+  config: dev
+
+# 作業環境: 本プロジェクトは Mac ではなく Ubuntu 端末で実行する（doppler setup 済みなのは Ubuntu 側）。
+# 用途・使用箇所・発行タイミングの台帳: docs/runbooks/credentials.md
+
+# =========================
+# シークレット管理方針
+# =========================
+# チーム共有・本番クレデンシャル類は Doppler で集中管理する。
+# 非機密の設定値は env/config.yaml、ローカルだけの秘密情報は env/secret.yaml に置く。
+# env/secret.yaml は .gitignore で除外し、コミットしない。
+# 値は登録せず、キー名と用途だけをコメントで管理する。
+#
+# 【本カタログの範囲】
+# cloud-ml-lab/dev は他のクラウド学習リポ（kaggle-bronze-gcp 等）と共有の config であり、
+# 実在キーは 31 件ある（2026-08-02 実測）。本カタログはそのうち **本ラボが参照する分だけ**
+# を載せる。他リポ由来のキー（例: KAGGLE_API_TOKEN）は意図的に載せない
+# （写経すると必ず腐るため。2026-07-31 に全件ミラーを廃止）。
+#
+# 突き合わせ方（値は出さない）:
+#   doppler secrets --only-names
+# 差分が出たら、本ラボが使うキーなら追記し、他リポのキーなら放置してよい。
+#
+# 【命名規則】3 層（2026-08-01 再設計。docs/tasks/05_done/doppler-key名の再設計.md）
+#   L1 SDK 標準名  : SDK / CLI / provider が固定名で読む値は、その名前のまま使う（改名禁止）
+#                    AWS_* / GOOGLE_CLOUD_* / AZURE_* / SNOWFLAKE_* / DATABRICKS_* /
+#                    NEON_API_KEY / KAGGLE_API_TOKEN / DOPPLER_TOKEN
+#   L2 サービス名先頭: 固定名を持たない値は <SERVICE>_<QUALIFIER…>_<TYPE>（NEON_MULTICLOUD_*_URI）
+#   L3 リポ固有    : そのリポのコードだけが読む入力値は <REPO>_<AREA>_<FIELD>（MCML_TF_*）
+# 機能カテゴリ接頭辞（AI_ / DB_ / ML_ / NOTIFY_）は使わない。旧 <CATEGORY>_<SERVICE>_<TYPE> 規約は
+# private-app workspace（apps/dev）側の規約であり、本 config には適用しない。
+# → 以前あった「CLOUD セクションだけ命名規則の例外」という但し書きは、この再設計で不要になった。
+#
+# 【置いてはいけないもの】
+# cloud-ml-lab はクラウド / ML 学習専用。個人アプリの秘密（Discord webhook・Cookie・Clerk・
+# Cloudinary・MongoDB 等）は 1 件も置かない。正本は private-app workspace の apps/dev。
+# 2026-08-01 に個人アプリ由来 29 件・参照ゼロ 16 件・用途不明 1 件を削除（77 → 31 件）。
+#
+# 正本は Doppler 実体。キーを追加・削除したら本ファイルと docs/runbooks/credentials.md を同一変更で更新する。
+
+# =========================
+# Neon（計測 DB / 全 Phase 共通）
+# =========================
+# NEON_MULTICLOUD_POOLED_URI    # L2。本ラボの計測到達点（pooled endpoint / 常用）
+#                               # -pooler ホスト。src/platforms/neon/connection.py はこちらを使う
+# NEON_MULTICLOUD_DIRECT_URI    # L2。同上（direct endpoint / DDL・マイグレーション用。
+#                               # sql/schema.sql の適用先）
+#                               # project=multicloud-ml-lab / branch=production / db=mlcompare
+#                               # region=aws-ap-southeast-1（Neon に東京リージョンは無い）
+# NEON_API_KEY                  # L1。Terraform neon provider / Neon CLI が読む標準名
+#                               # （プロジェクト/接続文字列の取得。scripts/mcp/neon.sh が消費）
+
+# =========================
+# CLOUD（マネージドML基盤 / 5基盤比較の実行資格情報）
+# =========================
+# 全て L1（SDK 標準名）。改名すると認証が通らない。
+#
+# --- GCP (Vertex AI) --- Phase 1
+# GOOGLE_CLOUD_PROJECT          # 実行プロジェクト。**Terraform の project_id もこれが正本**
+#                               # （2026-08-02 に variables.tf の default 直書きを廃止し、
+#                               #  terraform_vars.py の VAR_SPECS 経由で渡すようにした）。
+#                               # state バケットも `$GOOGLE_CLOUD_PROJECT-tfstate` として
+#                               # `terraform init -backend-config` で解決する
+# GOOGLE_CLOUD_REGION           # 実行リージョン
+#                               # 認証自体は gcloud ADC（~/.config/gcloud）を使用。
+#                               # サービスアカウント鍵は未発行のため Doppler に無し。
+#
+# --- AWS (SageMaker) --- Phase 2
+# AWS_ACCESS_KEY_ID             # ※root ユーザ鍵のまま使う（個人ラボには最小権限化が過剰、
+# AWS_SECRET_ACCESS_KEY         #   という owner 判断。docs/decisions/decision-log.md /
+#                               #   credentials.md §3。再提案しない）
+# AWS_DEFAULT_REGION            # 実行リージョン（AWS_REGION としても解決される）
+# AWS_ACCOUNT_ID                # 非機密。ECR URI 等の組み立てに使用
+#
+# --- Azure (Azure ML) --- Phase 3（go 判定後）
+# AZURE_SUBSCRIPTION_ID         # 対象サブスクリプション（FreeTrial 枠）
+# AZURE_TENANT_ID               # Entra ID テナント
+#                               # 認証自体は az login のユーザ資格情報を使用。
+#
+# --- Snowflake --- Phase 5（2026-08-01 発行）
+# SNOWFLAKE_ORGANIZATION_NAME   # 組織名。Terraform provider v2 が読む（v1 以降 account と分離）
+# SNOWFLAKE_ACCOUNT_NAME        # アカウント名。同上
+# SNOWFLAKE_ACCOUNT             # <org>-<account>。**Python connector 用で形式が違う**。
+#                               # provider 用の2つと両方要る（片方では通らない）
+# SNOWFLAKE_USER                # 実行ユーザー。service user は作らずロールで分離した
+#                               # （判断は docs/decisions/decision-log.md）
+# SNOWFLAKE_PRIVATE_KEY         # PKCS#8 PEM 本文。キーペア認証を既定にする
+#                               # （単要素パスワードはプログラム接続が塞がれうる）
+# SNOWFLAKE_PRIVATE_KEY_PASSPHRASE # 鍵を暗号化した場合のみ
+# SNOWFLAKE_ROLE                # ACCOUNTADMIN。**Terraform provider 専用**。
+#                               # adapter が名乗るロールはこれではなく terraform outputs の
+#                               # role_name（MCML_DEV_ROLE）。混ぜると Snowflake だけ
+#                               # permission friction が計測できなくなる
+# SNOWFLAKE_AUTHENTICATOR       # SNOWFLAKE_JWT。明示しないとパスワード認証に落ちる
+#
+# --- Databricks --- Phase 3（2026-08-01 発行。Free Edition ワークスペース）
+# DATABRICKS_HOST               # https://dbc-*.cloud.databricks.com。provider / SDK が読む
+# DATABRICKS_TOKEN              # PAT。OAuth SP は Free Edition で発行できない見込みのため一本化
+#                               # （credentials.md §6 / decision-log.md）。**有効期限を記録すること**
+#                               # ワークスペースは Databricks 側が持つので土台クラウド（AWS）の
+#                               # 資格情報は不要。provider は workspace-level。
+#                               # 注: 別文脈の DWH_DATABRICKS_TOKEN が同居していたが、消費者が
+#                               #     見つからないため 2026-08-01 に削除した。
+
+# =========================
+# MCML_TF_*（L3 / Terraform 入力。修正04 で export を廃し Doppler へ移した）
+# =========================
+# 個人情報（メール）と請求先。config.yaml に置くとコミットされるので Doppler が正本。
+# 解決は src/platforms/shared/terraform_vars.py の VAR_SPECS。**未解決なら terraform を
+# 起動する前に名前を挙げて落ちる**（渡し忘れがクラウド側の失敗として初めて出るのを防ぐ）。
+#
+# MCML_TF_VERTEX_SUBMITTER_EMAIL # gcp-dev: actAs binding の付与先
+# MCML_TF_BILLING_ACCOUNT_ID     # gcp-dev: 予算アラートの請求先（修正09 で必須化）
+# MCML_TF_BUDGET_EMAIL           # aws-dev / azure-dev: 予算アラートの通知先
+# MCML_TF_DBX_JOB_PRINCIPAL      # dbx-dev: ジョブ実行プリンシパル
+# MCML_TF_SF_GRANT_TO_USER       # sf-dev: ロールの付与先ユーザー
+
+# =========================
+# INFRA（インフラ / 運用）
+# =========================
+# DOPPLER_TOKEN                 # 非対話ランナー用 service token。ローカル対話作業では不要
+#                               # （doppler CLI のログインセッションで動く）。
+#
+# DOPPLER_PROJECT / DOPPLER_CONFIG / DOPPLER_ENVIRONMENT
+#                               # Doppler が自動注入する予約変数。登録も削除もできない
+#                               # （削除コマンドを投げても残る）。差分に出ても drift ではない。
+
+# =========================
+# 未発行（Phase 着手時に発行する。SDK 標準名で登録すること）
+# =========================
+# GOOGLE_APPLICATION_CREDENTIALS # GCP: 非対話自動化が必要になった場合のみ発行する SA キー
+# AZURE_CLIENT_ID / AZURE_CLIENT_SECRET # Azure: 非対話実行用サービスプリンシパル
+# DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET # OAuth SP。Free Edition から移行できたら
+
+# =========================
+# Doppler 初期化コマンド
+# =========================
+# doppler setup --project cloud-ml-lab --config dev --no-interactive

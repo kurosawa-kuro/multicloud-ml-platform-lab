@@ -1,0 +1,91 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.*.example
+!.env.*.sample
+!.env.*.template
+env/secret.yaml
+env/secret.*.yaml
+!env/secret.example.yaml
+!env/secret.sample.yaml
+!env/secret.template.yaml
+
+# Claude Code local overrides (personal, per-machine — never committed)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Logs
+*.log
+logs/
+.claude/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+target/
+dist/
+build/
+.next/
+.nuxt/
+.svelte-kit/
+out/
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+artifacts/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+*.tfplan
+
+# Databases and runtime data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+uploads/
+
+# make stamp-revision の生成物（ビルドごとに変わる）
+src/core/ml/config/_stamp.py
+
+# Snowflake キーペア認証の秘密鍵（Doppler が正本・repo に置かない）
+*.p8
+snoflake

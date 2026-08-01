@@ -1,0 +1,179 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make setup:*)",
+      "Bash(make build:*)",
+      "Bash(make run:*)",
+      "Bash(make dev:*)",
+      "Bash(make test:*)",
+      "Bash(make lint:*)",
+      "Bash(make fmt:*)",
+      "Bash(make check:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo run:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(mypy:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run build:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(gofmt:*)",
+      "Bash(terraform fmt:*)",
+      "Bash(terraform validate:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git stash list:*)",
+      "Bash(bash -n:*)",
+      "Bash(shellcheck:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(jq:*)",
+      "Bash(diff:*)",
+      "Bash(tree:*)",
+      "Bash(doppler run:*)"
+    ],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git rebase:*)",
+      "Bash(git checkout:*)",
+      "Bash(git clean:*)",
+      "Bash(gcloud:*)",
+      "Bash(gsutil:*)",
+      "Bash(bq:*)",
+      "Bash(aws:*)",
+      "Bash(gh:*)",
+      "Bash(terraform:*)",
+      "Bash(terraform plan:*)",
+      "Bash(terraform apply:*)",
+      "Bash(docker:*)",
+      "Bash(docker compose:*)",
+      "Bash(kubectl:*)",
+      "Bash(psql:*)",
+      "Bash(turso:*)",
+      "Bash(supabase:*)",
+      "Bash(doppler secrets:*)",
+      "Bash(npm publish:*)",
+      "Bash(cargo publish:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Read(./env/secret.yaml)",
+      "Read(./env/secret.*.yaml)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fdx:*)",
+      "Bash(terraform destroy:*)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/session-start-context.sh\"",
+            "statusMessage": "session-start context"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/detect-safety-boundary.sh\"",
+            "statusMessage": "safety-boundary check"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/detect-secret-content.sh\"",
+            "statusMessage": "secret-content check"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/detect-secret-read.sh\"",
+            "statusMessage": "secret-read check"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/detect-scope-creep.sh\"",
+            "statusMessage": "scope-creep check"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/format-on-edit.sh\"",
+            "statusMessage": "format on edit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/session-end.sh\"",
+            "statusMessage": "session-end bookkeeping"
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/detect-unverified-claim.sh\"",
+            "statusMessage": "unverified-claim check"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/statusline.sh\""
+  }
+}

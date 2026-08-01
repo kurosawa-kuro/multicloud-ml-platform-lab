@@ -1,0 +1,51 @@
+{
+  "captured_at": "2026-08-01",
+  "source": "Neon ml_runs (stage=train, status=success)",
+  "runs": [
+    {
+      "platform": "azureml",
+      "tier": "A",
+      "code_revision": "ddb1f092795a5200d82639f4a87f59861f25ff39",
+      "write_path": "direct",
+      "rmse": 0.4368055090296257,
+      "mae": 0.2840129606543999,
+      "r2": 0.8543973248910732
+    },
+    {
+      "platform": "databricks",
+      "tier": "B",
+      "code_revision": "4129907cae5b4add86367d950b8415be4370552a",
+      "write_path": "collected",
+      "rmse": 0.4368055090296257,
+      "mae": 0.2840129606543999,
+      "r2": 0.8543973248910732
+    },
+    {
+      "platform": "sagemaker",
+      "tier": "A",
+      "code_revision": "7e6dc1c00f96dd716d82299981c017900e29df5a",
+      "write_path": "direct",
+      "rmse": 0.4368055090296257,
+      "mae": 0.2840129606543999,
+      "r2": 0.8543973248910732
+    },
+    {
+      "platform": "snowflake",
+      "tier": "B",
+      "code_revision": "e4eeaab5658a23640d8118d0b6a39292ebb66712",
+      "write_path": "collected",
+      "rmse": 0.4368055090296257,
+      "mae": 0.2840129606543999,
+      "r2": 0.8543973248910732
+    },
+    {
+      "platform": "vertex",
+      "tier": "A",
+      "code_revision": "35d48cbbb92e8700f78ea54df8fc9495d4d7fff2",
+      "write_path": "direct",
+      "rmse": 0.4368055090296257,
+      "mae": 0.2840129606543999,
+      "r2": 0.8543973248910732
+    }
+  ]
+}

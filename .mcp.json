@@ -1,0 +1,14 @@
+{
+  "//": "Project-scoped MCP servers for this repo (committed, shared with the team). Personal/secret-bearing servers belong in .claude/settings.local.json or `claude mcp add`, NOT here — this file is public-release-bound. Delete this stub if the project uses no project-scoped MCP servers. See https://code.claude.com/docs for the mcpServers schema.",
+  "//neon": "Neon は本ラボの計測到達点（docs/02_architecture.md『Neon 集約』）。API キーの解決は scripts/mcp/neon.sh に寄せてあり、このファイルは秘密情報を持たない。args 内の ${VAR} は展開されないため直接キーを書く形にはできない（詳細は同スクリプト冒頭）。",
+  "mcpServers": {
+    "neon": {
+      "command": "bash",
+      "args": [
+        "scripts/mcp/neon.sh"
+      ]
+    }
+  },
+  "//scope": "**このセッションの起動位置に注意**: Claude Code を /home/ubuntu/repos で起動している場合、このファイル（プロジェクトスコープ）は読まれない。3クラウド + Terraform はユーザースコープに登録してある（`claude mcp list` で確認）。ラッパー実体は scripts/mcp/ に置き、ユーザースコープからは絶対パスで参照する。",
+  "//servers": "aws / gcp / azure / terraform の登録内容と読み取り専用の既定については docs/runbooks/credentials.md §9 を参照。"
+}

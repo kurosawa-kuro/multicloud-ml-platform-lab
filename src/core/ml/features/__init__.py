@@ -1,0 +1,1 @@
+"""Gold feature layer."""

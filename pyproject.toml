@@ -1,0 +1,115 @@
+[build-system]
+# Tier B の統一単位（wheel）を決定的に作るために明示する。
+# 未指定だと PEP 517 の legacy fallback になり、ビルド環境で dist の中身が変わりうる
+# ＝「5基盤で同一パッケージ」の担保が崩れる。
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multicloud-ml-platform-lab"
+version = "0.1.0"
+description = "5つのマネージドML基盤を同一データ・同一SHAで実測比較するラボ"
+requires-python = ">=3.12"
+
+# core/ml の依存はこの4つだけに保つ。
+# Snowflake warehouse Python は Anaconda channel 限定でバージョン固定が効きにくく、
+# Databricks は ML Runtime プリインストール版と wheel 依存が衝突しうるため。
+#
+# バージョンは minor 固定（.claude/rules/python.md）。
+# 学習コンテナと serving コンテナで同一 minor でないと、
+# 同一SHAでもメトリクスがずれて metric parity が無意味になる。
+# scikit-learn の上限は **Tier B（Snowflake）が決めている**。
+# snowflake-ml-python は最新（1.49）でも `scikit-learn<1.9` を要求するため、
+# 1.9 系にすると Model Registry の SDK が同居できない（Phase 5 で実測）。
+# 要件の破綻条件「Tier B で src/core/ml がそのまま動かない → 依存を削って再統一」に従い
+# 5基盤とも 1.8 系へ揃えた。**RMSE は 1.9 系と完全一致**することを実データで確認済み
+# （0.4368055090296257）なので、Vertex の実測値は測り直し不要。
+dependencies = [
+    "lightgbm>=4.6,<4.7",
+    "scikit-learn>=1.8,<1.9",
+    "pandas>=2.3,<2.4",
+    "pyarrow>=21.0,<22.0",
+]
+
+[project.optional-dependencies]
+# platforms/neon 用。core/ml からは import しない（Tier A コンテナを太らせない）
+neon = ["psycopg[binary]>=3.2,<3.3"]
+# core/app（Tier A 推論アプリ）用
+serving = ["fastapi>=0.120,<0.121", "uvicorn>=0.38,<0.39"]
+# platforms/vertex 用。**学習コンテナには入れない**（core/ml の依存最小制約）。
+# adapter はジョブを投げる側＝ローカル/オーケストレータでのみ import される。
+# artifact-registry は scripts/check_residual.py が残留検査で使う（aiplatform には含まれない）
+gcp = ["google-cloud-aiplatform>=1.163,<1.164", "google-cloud-artifact-registry>=1.20,<1.21"]
+# platforms/sagemaker 用。sagemaker SDK ではなく boto3 の低レベル API を使う
+# （BYOC 統一が要件で、Estimator の script mode 前提に隠されると比較にならない）。
+aws = ["boto3>=1.43,<1.44"]
+# platforms/azureml 用。SDK v2（azure-ai-ml）+ 資格情報チェーン。
+# mgmt-keyvault は残留検査（論理削除された Key Vault の列挙）、
+# storage-blob は入力配布・成果物回収（BlobArtifactStore）に要る。
+azure = [
+    "azure-ai-ml>=1.34,<1.35",
+    "azure-identity>=1.25,<1.26",
+    "azure-mgmt-keyvault>=12.0,<13.0",
+    "azure-storage-blob>=12.28,<12.29",
+]
+# platforms/databricks 用。wheel ビルド（build）は Tier B の統一単位の生成に要る。
+databricks = ["databricks-sdk>=0.123,<0.124", "build>=1.3,<1.4"]
+# platforms/snowflake 用。Model Registry は snowflake-ml-python が要る。
+# warehouse 側の依存は Anaconda channel から解決されるので、これはローカル実行用。
+# snowflake-ml-python は **core の scikit-learn 上限と連動する**（相互に縛り合う）。
+#   1.19 → scikit-learn<1.8 / 1.47 以降 → scikit-learn<1.9
+# core を 1.8 系にした以上、1.47 以降でないと解決しない（2026-08-01 実測）。
+#
+# llvmlite / numba に下限を置くのは、snowflake-ml-python が引く shap → numba →
+# llvmlite の解決で **Python 3.12 でビルドできない llvmlite 0.36** まで後退するため
+# （2026-08-01 実測。ビルド失敗で install ごと落ちる）。下限を与えると解ける。
+# **snowflake-ml-python は warehouse の Anaconda channel に在る版でなければならない。**
+# log_model が書く MANIFEST.yml は自分自身のバージョンを pin し、それをサーバー側が
+# 解決する。channel に無い版だと `CREATE MODEL` が内部エラー（300002）で落ちる
+# —— クライアント側は完全に成功しているので原因が見えない（2026-08-01 実測。
+# ローカル 1.49.0 に対し channel の最大は 1.48.0 だった）。
+# 上げるときは必ず `information_schema.packages` の在庫を確認する。
+snowflake = [
+    "snowflake-snowpark-python>=1.42,<1.43",
+    "snowflake-ml-python>=1.48,<1.49",
+    "llvmlite>=0.44",
+    "numba>=0.61",
+]
+# platforms/config.py（env/config.yaml の読み込み）用。**core には入れない**。
+config = ["pyyaml>=6.0,<6.1"]
+
+[project.scripts]
+# Databricks の python_wheel_task が呼ぶ entry point（Tier B の実行契約）。
+# infra/modules/databricks の job_entry_point 既定と一致させる。
+#
+# core.ml.cli 直ではなく platforms 側の wrapper を指すのは、学習の後に
+# ml_runs をジョブ内から記録するため（Tier A のシムが job_record を呼ぶのと同じ役割。
+# core は platforms を import できないので cli 自身には記録を入れられない）。
+train = "platforms.databricks.job_main:cli"
+
+[dependency-groups]
+# build は `make wheel`（Tier B 配布物）に要る。databricks extra にもあるが、
+# extra 無しの開発環境（make deps）でも wheel を作れるよう dev にも置く。
+dev = ["pytest>=8.4,<8.5", "ruff>=0.14,<0.15", "mypy>=1.18,<1.19", "httpx>=0.28,<0.29", "pyyaml>=6.0,<6.1", "types-PyYAML>=6.0,<6.1", "build>=1.3,<1.4"]
+
+[tool.setuptools.packages.find]
+# wheel に入れるのは core（学習本体）と platforms（Neon 記録層）。
+# クラウド SDK を使う adapter も同梱されるが import は遅延なので、
+# Databricks 側で SDK が無くても動く（依存は extra_dependencies で最小のまま）。
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+ignore_missing_imports = true

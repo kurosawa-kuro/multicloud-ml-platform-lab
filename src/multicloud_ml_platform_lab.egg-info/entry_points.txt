@@ -1,0 +1,2 @@
+[console_scripts]
+train = platforms.databricks.job_main:cli

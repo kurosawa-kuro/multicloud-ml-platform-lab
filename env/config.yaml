@@ -1,0 +1,109 @@
+# ===========================================
+# 非機密の設定（コミット対象）
+#
+# **ここに置いてよいのは「人が決める値」だけ。**
+#   人が決める値      : region / マシンサイズ / prefix / データパス / 名前
+#   apply が決める値  : バケット名（乱数サフィックス）/ account id / workspace 名 /
+#                       role ARN / イメージ URI / job id
+#                       → `terraform output -json` の生成物（artifacts/*.outputs.json）
+#   秘密              → Doppler（docs/runbooks/credentials.md）
+#
+# apply が決める値をここへ手書きすると必ず腐る（旧 env/project.yaml が
+# 別マシンのパスのまま残っていたのが実例）。解決順は src/platforms/config.py:
+#
+#   環境変数（MCML_<PLATFORM>_<FIELD>） > terraform outputs > このファイル > dataclass 既定
+#
+# 5基盤を **1ファイルに縦に並べる** のは比較が目的だから。基盤ごとにファイルを割ると
+# 「Vertex にはあるが Azure には無い設定」が見えなくなる。
+# ===========================================
+
+# --- アプリケーション（core/app の推論サーバ）---
+appEnv: local
+port: 8080
+logLevel: info
+
+# --- 5基盤共通 ---
+common:
+  # 学習データの置き場（各基盤のストレージ配下の相対パス）
+  data_prefix: data/california_housing
+  # コンテナ / wheel / パッケージのタグ。同一SHA比較の担保なので5基盤で必ず揃える
+  image_tag: latest
+  # 中断ありのコスト優先実行を既定にする（中断は失敗 run として記録される）
+  use_spot: true
+
+platforms:
+  # --- Tier A: コンテナ実行型 ---
+  vertex:
+    region: us-central1
+    machine_type: n1-standard-4
+    endpoint_machine_type: n1-standard-2
+    model_display_name: mcml-california-housing
+    endpoint_display_name: mcml-dev-endpoint
+    timeout_hours: 2
+
+  sagemaker:
+    region: ap-northeast-1
+    instance_type: ml.m5.large
+    instance_count: 1
+    endpoint_instance_type: ml.t2.medium
+    endpoint_instance_count: 1
+    max_runtime_seconds: 7200
+    max_wait_seconds: 10800
+    job_prefix: mcml-dev
+    endpoint_name: mcml-dev-endpoint
+
+  azureml:
+    # リージョンは terraform outputs の location から入る（他2基盤と違う点は
+    # コスト比較の注記に残す）
+    endpoint_instance_type: Standard_DS2_v2
+    endpoint_instance_count: 1
+    model_name: mcml-california-housing
+    endpoint_name: mcml-dev-endpoint
+    deployment_name: primary
+    experiment_name: multicloud-ml-platform-lab
+
+  # --- Tier B: データ基盤内蔵型 ---
+  databricks:
+    volume: artifacts
+    model_name: california_housing
+    job_name: mcml_dev_train
+    serving_endpoint_name: mcml_dev_serving
+    serving_workload_size: Small
+    # Tier A の常時課金との構造差。落とすと比較の前提が変わるので true 固定
+    scale_to_zero: true
+    # wheel 名はここに書かない。pyproject の name/version から導出する
+    # （src/platforms/packaging_names.py）。版を上げたときに config と
+    # Terraform の両方を直し忘れると、実行時に entry point を引けず落ちるため。
+
+  snowflake:
+    stage: CODE
+    model_name: CALIFORNIA_HOUSING
+    procedure_name: TRAIN
+    source_table: CALIFORNIA_HOUSING
+    package_filename: core_ml.zip
+    python_runtime_version: "3.12"
+    predict_function: predict
+
+# --- Terraform への入力（人が決める値のみ）---------------------------------
+# 秘密・個人識別子（メール / ユーザー名 / secret 文字列）はここに置かず
+# Doppler から環境変数で渡す。対応表は src/platforms/terraform_vars.py。
+# 派生値（wheel_path / compute_cluster_vm_priority）はここに書かない
+#   —— common.use_spot と pyproject から導出される。
+terraform:
+  dbx-dev:
+    # Free Edition は CREATE CATALOG 不可。既存カタログに相乗りする
+    create_catalog: false
+    catalog_name: workspace
+    # カタログ名で絞れないぶん、ラボ接頭辞はスキーマ名に入れる
+    schema_name: mcml_dev
+  sf-dev:
+    # トライアルは External Access Integration を作れない
+    create_neon_secret: false
+
+# --- Neon（計測到達点・比較対象ではない）---
+# 接続文字列は Doppler（NEON_MULTICLOUD_*_URI）。ここには識別子だけ。
+neon:
+  project: multicloud-ml-lab
+  branch: production
+  database: mlcompare
+  region: aws-ap-southeast-1
