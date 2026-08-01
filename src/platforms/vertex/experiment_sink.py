@@ -147,8 +147,15 @@ class VertexExperimentSink:
         return self._inner.next_attempt(platform, stage)
 
     def _mirror(self, run: MlRun) -> None:
-        """Experiments へ1 run 複写する。失敗しても呼び出し元へ伝えない。"""
+        """Experiments へ1 run 複写する。失敗しても呼び出し元へ伝えない。
+
+        **実験そのものを先に用意する**。`ExperimentRun.create` は内部で
+        `_get_experiment()` を呼ぶだけで作らないため、未作成のまま渡すと落ちる
+        （SDK 1.163.0 の実装を読んで確認）。`get_or_create` は冪等なので
+        毎 run 呼んでよい。
+        """
         try:
+            self.sdk.Experiment.get_or_create(self._experiment)
             experiment_run = self.sdk.ExperimentRun.create(
                 experiment_run_name(run), experiment=self._experiment
             )

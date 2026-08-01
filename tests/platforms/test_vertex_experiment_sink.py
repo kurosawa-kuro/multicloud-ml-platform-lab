@@ -102,10 +102,18 @@ class FakeExperimentRun:
 class FakeSdk:
     def __init__(self, *, explode: bool = False) -> None:
         self.created: list[tuple[str, str]] = []
+        self.ensured: list[str] = []
         self.last_run: FakeExperimentRun | None = None
         self._explode = explode
 
         outer = self
+
+        class Experiment:
+            @staticmethod
+            def get_or_create(name: str) -> None:
+                outer.ensured.append(name)
+
+        self.Experiment = Experiment
 
         class ExperimentRun:
             @staticmethod
@@ -249,3 +257,17 @@ def test_mirror_wraps_only_vertex(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert factory.with_experiment_mirror(Platform.SNOWFLAKE, inner) is inner
     assert isinstance(factory.with_experiment_mirror(Platform.VERTEX, inner), VertexExperimentSink)
+
+
+def test_experiment_is_created_before_the_run() -> None:
+    """`ExperimentRun.create` は実験を作らない（`_get_experiment` を呼ぶだけ）。
+
+    未作成のまま渡すと落ちるので、先に `get_or_create` する。冪等なので毎 run でよい。
+    """
+    sdk = FakeSdk()
+    sink = VertexExperimentSink(SpyInner(), experiment="mcml-dev", aiplatform=sdk)
+
+    sink.record_run(make_run())
+
+    assert sdk.ensured == ["mcml-dev"]
+    assert sdk.created == [("train-0d5f7d2e-1111-4222-8333-444444444444", "mcml-dev")]
