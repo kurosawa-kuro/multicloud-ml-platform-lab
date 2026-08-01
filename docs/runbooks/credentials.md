@@ -74,10 +74,13 @@ Neon は計測 DB として全 Phase 共通（§1）。
 | `MCML_TF_DBX_JOB_PRINCIPAL` | ジョブ実行プリンシパル | dbx-dev | Doppler |
 | `MCML_TF_SF_GRANT_TO_USER` | ロールの付与先ユーザー | sf-dev | Doppler |
 
-**`MCML_VERTEX_EXPERIMENT`（秘密ではない・Doppler に置かない）**: Vertex の run を
-Vertex AI Experiments へ複写するときの実験名。**設定したときだけ複写が有効**（既定 OFF）。
-有効化するとクラウドへの書き込みが増えるため、`config.yaml` で常時 ON にしていない。
-設計は `src/platforms/vertex/experiment_sink.py` の docstring。
+**Vertex AI Experiments への複写（秘密ではない・Doppler に置かない）**:
+`VertexConfig.experiment`（config.yaml の `platforms.vertex.experiment`、または
+env 上書き `MCML_VERTEX_EXPERIMENT` —— 既存の `MCML_<PLATFORM>_<FIELD>` 規約そのもの）。
+**未設定なら複写しない**（既定 OFF）。有効化するとクラウドへの書き込みが増えるため、
+config.yaml で常時 ON にしていない。単一基盤の関心なので共通層（factory / core）には
+一切現れず、実装は `VertexAdapter._tracked` の override に閉じている
+（`src/platforms/vertex/experiment_observer.py` の docstring）。
 
 `GOOGLE_CLOUD_PROJECT` も 2026-08-02 から Terraform 入力を兼ねる（§2）。SDK 標準名の env が
 既にあるので `MCML_TF_` を新設せず、そのまま `VAR_SPECS` に載せている。

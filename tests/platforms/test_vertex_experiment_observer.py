@@ -128,15 +128,44 @@ class FakeSdk:
         self.ExperimentRun = ExperimentRun
 
 
-# --- 記録経路から降りていること -------------------------------------------
+# --- 共通層に存在しないこと（outside-in の要点）----------------------------
+
+
+def make_adapter(sdk: Any, sink: Any, experiment: str | None = "exp") -> Any:
+    """実 VertexAdapter を fake SDK / sink で組む。配線そのものが検証対象。"""
+    from platforms.vertex.adapter import VertexAdapter, VertexConfig
+
+    config = VertexConfig(
+        project="example-gcp-project",
+        region="us-central1",
+        bucket="example-bucket",
+        training_image_uri="img",
+        experiment=experiment,
+    )
+    return VertexAdapter(config, sink=sink, aiplatform=sdk)
+
+
+def test_common_layers_do_not_know_the_observer() -> None:
+    """共通層（core / TrackedOperations / factory）が Experiments を知らないこと。
+
+    `ports.py` の「5基盤ぶんの実装が並ぶものだけ port にする」の番人。
+    単一基盤の関心が共通層に漏れたら、ここで落ちる。
+    """
+    import inspect
+
+    import platforms.shared.contracts.tracking as shared_tracking
+    import platforms.shared.factory as factory
+    from core.telemetry import tracking as core_tracking
+
+    for module in (core_tracking, shared_tracking, factory):
+        source = inspect.getsource(module)
+        # docstring の「作り直した」注記は許す。コード（import / 呼び出し）を禁じる
+        assert "experiment_observer" not in source, f"{module.__name__} が observer を import"
+        assert "attach_observer" not in source, f"{module.__name__} に observer フック"
 
 
 def test_observer_carries_no_sink_contract() -> None:
-    """observer が sink の契約を持たないこと。
-
-    decorator だった頃は `merge_run_params` を落として stage 跨ぎの再開を静かに壊した。
-    **契約を持たなければ落としようがない** —— それがこの再設計の要点。
-    """
+    """observer が sink の契約を持たないこと（決して記録経路に戻さない）。"""
     observer = VertexExperimentObserver(experiment="exp", aiplatform=FakeSdk())
 
     for name in ("record_run", "next_attempt", "merge_run_params"):
@@ -146,24 +175,14 @@ def test_observer_carries_no_sink_contract() -> None:
 def test_job_owned_success_is_still_observed() -> None:
     """**学習成功行も観測される。** sink decorator だった頃の最大の欠陥がここ。
 
-    成功行はジョブ側が書く規約（`job_owns_success=True`）なので sink へは伝播しない。
-    decorator は sink の下流なので一緒に抑制され、Experiments に現れなかった（実クラウドで実測）。
-    observer は抑制と無関係に呼ばれる。
+    成功行はジョブ側が書く規約（`job_owns_success=True`）なので sink へは伝播しないが、
+    `VertexAdapter._tracked` の override は super() の戻り値を抑制と無関係に受け取る。
     """
     from core.telemetry.schemas import Stage
-    from platforms.shared.contracts.tracking import TrackedOperations
 
     sdk = FakeSdk()
     inner = SpyInner()
-
-    class Adapter(TrackedOperations):
-        platform = Platform.VERTEX
-
-        def __init__(self, sink: Any) -> None:
-            self._sink = sink
-
-    adapter = Adapter(inner)
-    adapter.attach_observer(VertexExperimentObserver(experiment="exp", aiplatform=sdk))
+    adapter = make_adapter(sdk, inner)
 
     adapter._tracked(Stage.TRAIN, {}, lambda ctx: None, job_owns_success=True)
 
@@ -174,22 +193,48 @@ def test_job_owned_success_is_still_observed() -> None:
 def test_observation_failure_does_not_reach_the_caller() -> None:
     """観測は非致命。落ちても adapter の結果を変えない。"""
     from core.telemetry.schemas import Stage
-    from platforms.shared.contracts.tracking import TrackedOperations
 
-    class Adapter(TrackedOperations):
-        platform = Platform.VERTEX
-
-        def __init__(self, sink: Any) -> None:
-            self._sink = sink
-
-    adapter = Adapter(SpyInner())
-    adapter.attach_observer(
-        VertexExperimentObserver(experiment="exp", aiplatform=FakeSdk(explode=True))
-    )
+    adapter = make_adapter(FakeSdk(explode=True), SpyInner())
 
     run = adapter._tracked(Stage.REGISTER, {}, lambda ctx: None)
 
     assert run.status is Status.SUCCESS
+
+
+def test_mirror_is_off_when_experiment_is_unset() -> None:
+    """`VertexConfig.experiment` が None なら SDK に一切触れない（既定 OFF）。"""
+    from core.telemetry.schemas import Stage
+
+    sdk = FakeSdk()
+    adapter = make_adapter(sdk, SpyInner(), experiment=None)
+
+    adapter._tracked(Stage.REGISTER, {}, lambda ctx: None)
+
+    assert sdk.created == [] and sdk.ensured == []
+
+
+def test_experiment_field_resolves_via_standard_env_override() -> None:
+    """`MCML_VERTEX_EXPERIMENT` が config 解決規約でフィールドに載ること。
+
+    factory が独自に環境変数を読む形（旧設計）ではなく、
+    `MCML_<PLATFORM>_<FIELD>` の既存規約そのものであることの確認。
+    """
+    from core.telemetry.schemas import Platform as P
+    from platforms.shared.config import Settings
+
+    settings = Settings(
+        config={"platforms": {"vertex": {"region": "us-central1"}}},
+        outputs={
+            P.VERTEX: {
+                "project_id": "example-gcp-project",
+                "gcs_bucket": "example-bucket",
+                "container_image_prefix": "example",
+            }
+        },
+        environ={"MCML_VERTEX_EXPERIMENT": "mcml-dev"},
+    )
+
+    assert settings.for_platform(P.VERTEX).experiment == "mcml-dev"
 
 
 def test_non_vertex_runs_are_not_mirrored() -> None:
@@ -280,24 +325,3 @@ def test_run_name_is_lowercase_and_bounded() -> None:
     assert len(name) <= 128
 
 
-# --- 配線（factory.build_observer）----------------------------------------
-
-
-def test_observer_is_null_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """既定は無効。設定しない限りクラウドへの書き込みを増やさない。"""
-    from core.telemetry.observers import NullObserver
-    from platforms.shared import factory
-
-    monkeypatch.delenv(factory.VERTEX_EXPERIMENT_ENV, raising=False)
-
-    assert isinstance(factory.build_observer(Platform.VERTEX), NullObserver)
-
-
-def test_observer_is_built_only_for_vertex(monkeypatch: pytest.MonkeyPatch) -> None:
-    from core.telemetry.observers import NullObserver
-    from platforms.shared import factory
-
-    monkeypatch.setenv(factory.VERTEX_EXPERIMENT_ENV, "mcml-dev")
-
-    assert isinstance(factory.build_observer(Platform.SNOWFLAKE), NullObserver)
-    assert isinstance(factory.build_observer(Platform.VERTEX), VertexExperimentObserver)

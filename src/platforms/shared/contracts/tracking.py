@@ -18,7 +18,6 @@ import os
 from collections.abc import Callable
 from typing import Any
 
-from core.telemetry.observers import NullObserver, RunObserver
 from core.telemetry.schemas import MlRun, Platform, Stage, Status
 from core.telemetry.tracking import RunContext, RunSink, track
 
@@ -85,23 +84,15 @@ class TrackedOperations:
 
     継承側は `platform: Platform` クラス属性と `self._sink` を用意する。
 
-    `_observer` は任意。**記録の正本（sink）とは別物**で、run を横から見るだけ
-    （`core.telemetry.observers`）。既定は何もしない `NullObserver` なので、
-    観測を使わない adapter は今までどおり `_sink` だけ用意すればよい。
+    継承側でこの層に何かを**足さない**こと。ここに置いてよいのは
+    **5基盤に共通する記録の形だけ**（ports.py の「port を切る基準」と同じ判断）。
+    単一基盤の関心（例: Vertex AI Experiments への複写）は、その基盤の adapter 内で
+    `_tracked` を override して足す —— 2026-08-02 に observer フックをここへ置いて
+    その原則を破り、作り直した。
     """
 
     platform: Platform
     _sink: RunSink
-    _observer: RunObserver = NullObserver()
-
-    def attach_observer(self, observer: RunObserver) -> None:
-        """観測層を差す。**5基盤の adapter の __init__ を変えずに済ませるための口。**
-
-        観測は adapter の関心事ではない（誰が見ているかで adapter の挙動は変わらない）。
-        コンストラクタ引数にすると5実装すべてに配線が要り、比較のための最小差分という
-        性質が濁るので、後から差す形にした。既定は `NullObserver`。
-        """
-        self._observer = observer
 
     def _next_attempt(self, stage: Stage) -> int:
         """この試行の attempt を先に確定させる。
@@ -146,20 +137,7 @@ class TrackedOperations:
             raise RuntimeError("track() が MlRun を記録しなかった")
         if job_owns_success and sink.last.status is Status.SUCCESS:
             self._merge_job_row_params(sink.last)
-        # **抑制の有無に関わらず観測する。** ここが sink の decorator ではなく
-        # 独立した層である理由（observers.py のモジュール docstring）。
-        # 学習成功行は Neon へ書かない（ジョブが書く）が、観測はする。
-        self._observe(sink.last)
         return sink.last
-
-    def _observe(self, run: MlRun) -> None:
-        """観測は非致命。失敗しても adapter の結果を変えない。"""
-        try:
-            self._observer.observe(run)
-        except Exception:  # noqa: BLE001 - 観測の失敗で計測結果を変えない
-            logging.getLogger(f"platforms.{self.platform.value}").warning(
-                "run %s の観測に失敗（記録は済んでいる）", run.run_id, exc_info=True
-            )
 
     def _merge_job_row_params(self, run: MlRun) -> None:
         """ジョブが書いた成功行へ、adapter しか知らない params を足す。

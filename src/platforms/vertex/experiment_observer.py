@@ -1,18 +1,22 @@
 """Vertex AI Experiments へ run を複写する observer（A: 併存 の実装）。
 
-## 位置づけ —— 記録経路には載らない
+## 位置づけ —— Vertex adapter の内部部品（共通層には存在しない）
 
-`core.telemetry.observers.RunObserver` の実装。**`ml_runs` の正本には一切触らない。**
-2026-08-02 まではこれを sink の decorator として実装していたが、2つの理由で作り直した:
+**`ml_runs` の正本には一切触らない。** 呼び出し元は `VertexAdapter._tracked` の
+override だけで、共通層（`TrackedOperations` / factory / core）はこのモジュールを知らない。
 
-  1. **学習成功行が複写されなかった。** 成功行はジョブ側が書く規約なので
-     `RecordingSink` が sink への伝播を抑制する。decorator は sink の下流なので
-     一緒に抑制され、最も情報量の多い行が Experiments に現れなかった（実クラウドで実測）。
-  2. **記録経路に居座るのが危険だった。** decorator が `merge_run_params` を落として
-     stage 跨ぎの再開を静かに壊した。観測が記録の契約を背負う理由は無い。
+ここに至る2段の作り直し（2026-08-02）:
 
-observer は `TrackedOperations._tracked` から抑制と無関係に呼ばれるので、
-学習成功行も複写される。sink の契約からは完全に降りた。
+  1. **sink の decorator として実装** → 学習成功行が複写されない（成功行はジョブ側が
+     書く規約で、decorator は抑制の下流）＋ `merge_run_params` を落として再開を壊した。
+  2. **core に RunObserver Protocol を新設して共通層へフック** → 動くが、実装が1つしか
+     無い抽象を core に置いた。`ports.py` の「**5基盤ぶんの実装が並ぶものだけ port に
+     する**。抽象化が目的化すると比較したい差が隠れる」への違反。
+     5つのインフラから共通層を導くなら、単一基盤の関心は共通層に置けない。
+
+よって最終形は **Vertex adapter 内の override**。学習成功行も複写され（super() の戻り値は
+抑制と無関係に手元にある）、共通層は無傷で、有効化は `VertexConfig.experiment`
+（env なら `MCML_VERTEX_EXPERIMENT` —— config 解決規約 `MCML_<PLATFORM>_<FIELD>` そのもの）。
 
 ## なぜ「置換」ではなく「併存」か
 

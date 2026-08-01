@@ -272,3 +272,27 @@ task note は1タスクに閉じるので「最近このエージェントは曖
   env なしで `plan` が通ることを実測で確認。
 - link: [check_residual.py](../../scripts/check_residual.py) /
   [gcp-dev/versions.tf](../../infra/environments/gcp-dev/versions.tf)
+
+## 2026-08-02 — 設計の向きを反転する: 共通層は「5つのインフラの交差点」からしか導かない
+
+- type: design-principle（owner 指摘「ML コード中心に考えるな。5つのインフラから共通 ML コードが
+  どうあるべきかを考えないと永遠に適切な設計にならない。応急処置は原則無意味」）
+- 何を間違え続けたか: Experiments 複写を「どう複写するか」（ML コード側の仕組み）から設計した。
+  第1段（sink decorator）も第2段（core に RunObserver Protocol + 共通層フック）も、
+  **実装が1つしか無い抽象を共通層に置いた**点で同型の誤り。`ports.py` は最初から
+  「**5基盤ぶんの実装が並び、かつ呼び出し側が差を意識してはいけない操作だけ** port にする。
+  それ以外は切らない」と定めており、リポの原則を自分の追加が破っていた。
+- 最終形: 単一基盤の関心はその基盤に閉じる。`VertexAdapter._tracked` override +
+  `VertexConfig.experiment`。共通層（core / TrackedOperations / factory）から observer の
+  痕跡を全て除去し、`test_common_layers_do_not_know_the_observer` で機械的に固定した。
+- あわせて発覚した仕様違反: 比較クエリが生の ml_runs / infra_events を読んでおり、
+  campaign 後の検証 run が混入して UC-003 / G3 が破れていた。**母集団の定義を
+  sql/schema.sql の view（baseline_runs / baseline_infra_events・境界 2026-08-01 15:00 UTC）
+  として正本化**。view 経由の実行で failure_class 内訳（sdk 12 / container 1 / network 1 /
+  package 1）と RMSE parity が記録と完全一致することを実測で確認した。
+- 教訓: 共通コードの形は共通コードの中からは決まらない。**依存する側（5基盤）の制約の
+  交差点だけが共通層に置ける**。1基盤にしか実装が無いものを共通層に置きたくなったら、
+  それは設計の向きが逆になっているサイン。
+- link: [ports.py](../../src/platforms/shared/contracts/ports.py) /
+  [test_vertex_experiment_observer.py](../../tests/platforms/test_vertex_experiment_observer.py) /
+  [schema.sql](../../sql/schema.sql)

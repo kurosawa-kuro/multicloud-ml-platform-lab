@@ -64,6 +64,11 @@ class VertexConfig:
     model_display_name: str = "mcml-california-housing"
     endpoint_display_name: str = "mcml-dev-endpoint"
     endpoint_machine_type: str = "n1-standard-2"
+    # Vertex AI Experiments への複写先。**None なら複写しない**（既定 OFF）。
+    # env で有効化するなら MCML_VERTEX_EXPERIMENT（config.py の解決規約そのまま）。
+    # Vertex 固有の関心なので、共通層ではなくこの config が持つ（ports.py の
+    # 「5基盤ぶんの実装が並ぶものだけ port にする」に従う）。
+    experiment: str | None = None
     # 推論契約（src/core/app/api/routes.py の Vertex 用ルート）
     predict_route: str = "/predict"
     health_route: str = "/health"
@@ -98,6 +103,7 @@ class VertexAdapter(TrackedOperations):
         self._config = config
         self._sink = sink
         self._aiplatform = aiplatform
+        self._experiments: Any | None = None  # 遅延生成（config.experiment が無ければ使わない）
         self.job_resource_name: str | None = None
         self.model_resource_name: str | None = None
         self.endpoint_resource_name: str | None = None
@@ -117,6 +123,40 @@ class VertexAdapter(TrackedOperations):
             )
             self._aiplatform = aiplatform
         return self._aiplatform
+
+    # --- Vertex 固有の観測（Experiments 複写） ---------------------------
+
+    def _tracked(self, *args: Any, **kwargs: Any) -> MlRun:
+        """共通の記録（super）を済ませた後、**Vertex 固有の観測**を足す。
+
+        ここが adapter 内 override であることに意味がある。Experiments は Vertex の
+        サービスで、5基盤に並ぶ実装が無い。共通層（TrackedOperations / factory）へ
+        フックを置くと「5基盤に共通する形だけを共通層に置く」原則（ports.py）が崩れる
+        —— 2026-08-02 に一度そうして作り直した。
+
+        `job_owns_success` で Neon への成功行が抑制されるケース（学習）でも、
+        super() が返す run はここに届くので**学習成功行も観測される**。
+        観測は非致命（複写に失敗しても計測結果と戻り値は変えない）。
+        """
+        run = super()._tracked(*args, **kwargs)
+        if self._config.experiment:
+            try:
+                if self._experiments is None:
+                    from platforms.vertex.experiment_observer import (  # noqa: PLC0415
+                        VertexExperimentObserver,
+                    )
+
+                    # self.sdk を渡す = aiplatform.init(project/region) 済みの SDK を共有する。
+                    # observer が独自に import すると init 前の SDK で create が落ちる
+                    self._experiments = VertexExperimentObserver(
+                        experiment=self._config.experiment, aiplatform=self.sdk
+                    )
+                self._experiments.observe(run)
+            except Exception:  # noqa: BLE001 - 観測の失敗で計測結果を変えない
+                logging.getLogger("platforms.vertex").warning(
+                    "Experiments への複写に失敗（記録は済んでいる）", exc_info=True
+                )
+        return run
 
     # --- PlatformAdapter -------------------------------------------------
 

@@ -5,6 +5,11 @@
 -- ここのクエリ結果から起こす。手で数えた値をレポートに書かない。
 --
 -- スキーマ正本は sql/schema.sql。参照整合は tests/test_sql_contracts.py が pin する。
+--
+-- **生の ml_runs / infra_events は読まない。** 読むのは baseline_runs /
+-- baseline_infra_events（sql/schema.sql の比較母集団 view）。テーブルは追記専用なので、
+-- campaign 後の検証 run・実験 run が増えるたびに生テーブル直読みの数字は変わってしまう
+-- （2026-08-02 に実際に起きた）。母集団の定義は view 側が正本。
 
 -- teardown 行の除外条件（2026-08-01 以降の全クエリで使う）。
 --
@@ -32,7 +37,7 @@ select count(distinct platform)                        as platforms,        -- 5
        max(metrics ->> 'rmse')                         as rmse_max,
        array_agg(distinct platform order by platform)  as platform_list,
        array_agg(distinct code_revision)               as code_revisions    -- 参考: 揃わなくてよい
-from ml_runs
+from baseline_runs
 where stage = 'train'
   and status = 'success'
   and metrics ? 'rmse';
@@ -53,7 +58,7 @@ with runs as (
            stage,
            status,
            row_number() over (partition by platform, stage order by created_at) as try_number
-    from ml_runs
+    from baseline_runs
     where params ->> 'action' is distinct from 'teardown'
 )
 select platform,
@@ -69,7 +74,7 @@ select platform,
        stage,
        failure_class,
        count(*) as failures
-from ml_runs
+from baseline_runs
 where status = 'failure'
   and params ->> 'action' is distinct from 'teardown'
 group by platform, stage, failure_class
@@ -88,7 +93,7 @@ select platform,
        count(*) filter (where status = 'success')                                as success_runs,
        round(avg(duration_seconds) filter (where status = 'success')::numeric, 1) as avg_seconds,
        round(max(duration_seconds)::numeric, 1)                                   as max_seconds
-from ml_runs
+from baseline_runs
 group by platform, tier, 3
 order by 3, platform;
 
@@ -102,7 +107,7 @@ select platform,
        duration_seconds,
        jsonb_array_length(coalesce(residual_resources -> 'findings', '[]'::jsonb)) as finding_count,
        residual_resources
-from infra_events
+from baseline_infra_events
 where action = 'destroy'
 order by platform, created_at desc;
 
@@ -113,7 +118,7 @@ select platform,
        tier,
        write_path,
        count(*) as runs
-from ml_runs
+from baseline_runs
 where params ->> 'action' is distinct from 'teardown'
 group by platform, tier, write_path
 order by platform, write_path;

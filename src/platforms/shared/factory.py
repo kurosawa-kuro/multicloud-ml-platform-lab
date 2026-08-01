@@ -22,7 +22,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from core.telemetry.observers import NullObserver, RunObserver
 from core.telemetry.schemas import Platform
 from core.telemetry.tracking import RunSink
 from platforms.azureml.adapter import AzureMLAdapter
@@ -43,27 +42,18 @@ ADAPTERS: dict[Platform, type] = {
 
 DEFAULT_FALLBACK_DIR = Path("artifacts/fallback")
 
-# Vertex AI Experiments へ複写するときの実験名。**未設定なら複写しない**（既定は無効）。
-# 秘密ではないが実行のたびにクラウドへ書くので、config.yaml で常時 ON にはしない。
-VERTEX_EXPERIMENT_ENV = "MCML_VERTEX_EXPERIMENT"
 
-
-def build_adapter(
-    platform: Platform,
-    *,
-    sink: RunSink,
-    settings: Settings | None = None,
-    observer: RunObserver | None = None,
-) -> Any:
+def build_adapter(platform: Platform, *, sink: RunSink, settings: Settings | None = None) -> Any:
     """解決済み設定から adapter を作る。設定不足は ConfigError で落ちる。
 
-    `observer` は **記録の正本とは別の観測層**（`core.telemetry.observers`）。
-    省略時は `build_observer()` が環境から決める（既定は何もしない）。
+    基盤固有の付加機能（例: Vertex の Experiments 複写）はここで配線しない。
+    それは **その基盤の config フィールド**（`VertexConfig.experiment`）であり、
+    adapter が自分で組み立てる。共通 factory が単一基盤の機能を知り始めると、
+    「5基盤に共通する形だけを共通層に置く」原則（ports.py）が崩れる
+    —— 2026-08-02 に build_observer をここへ置いてその原則を破り、作り直した。
     """
     resolved = settings if settings is not None else load_settings()
-    adapter = ADAPTERS[platform](resolved.for_platform(platform), sink=sink)
-    adapter.attach_observer(observer if observer is not None else build_observer(platform))
-    return adapter
+    return ADAPTERS[platform](resolved.for_platform(platform), sink=sink)
 
 
 def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSink:
@@ -88,29 +78,6 @@ def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSi
 
     return NeonRunSink()
 
-
-def build_observer(platform: Platform) -> RunObserver:
-    """run を横から見る層を決める。**記録の正本（sink）とは別物。**
-
-    `MCML_VERTEX_EXPERIMENT` があるときだけ Vertex AI Experiments へ複写する。
-    **既定は何もしない。** 有効化はクラウドへの書き込みを増やす（＝課金と残留の対象が
-    増える）ので、環境変数を明示したときだけ働かせる。
-
-    Vertex 以外は常に `NullObserver`（Experiments は Vertex のサービス。他基盤の run を
-    入れると「Experiments に5基盤が揃っている」という誤解を生む）。
-
-    2026-08-02 まではこれを `build_sink` の decorator として挟んでいた。
-    記録経路から降ろした理由は `core.telemetry.observers` のモジュール docstring。
-    """
-    import os  # noqa: PLC0415 - 環境判定のみ
-
-    experiment = os.environ.get(VERTEX_EXPERIMENT_ENV)
-    if platform is not Platform.VERTEX or not experiment:
-        return NullObserver()
-
-    from platforms.vertex.experiment_observer import VertexExperimentObserver  # noqa: PLC0415
-
-    return VertexExperimentObserver(experiment=experiment)
 
 
 def deploy_reference(

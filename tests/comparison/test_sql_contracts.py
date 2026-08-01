@@ -43,8 +43,8 @@ def test_queries_are_implemented_not_todo() -> None:
 
 
 def test_referenced_tables_exist_in_schema() -> None:
-    unknown = _referenced_tables() - _schema_tables()
-    assert not unknown, f"schema.sql に無いテーブルを参照: {sorted(unknown)}"
+    unknown = _referenced_tables() - _schema_tables() - _schema_views()
+    assert not unknown, f"schema.sql に無いテーブル/ビューを参照: {sorted(unknown)}"
 
 
 def test_comparison_axes_are_covered() -> None:
@@ -110,3 +110,38 @@ def test_metric_parity_query_does_not_group_by_code_revision() -> None:
     assert "group by code_revision" not in parity.lower(), (
         "parity クエリが code_revision で group by している（基盤ごとに SHA が違うため割れる）"
     )
+
+
+# --- 比較母集団（2026-08-02 追加）------------------------------------------
+
+
+def _schema_views() -> set[str]:
+    return set(re.findall(r"create or replace view (\w+)", SCHEMA))
+
+
+def test_queries_read_only_the_baseline_views() -> None:
+    """比較クエリは生の ml_runs / infra_events を読まない。
+
+    テーブルは追記専用なので、campaign 後の検証 run・実験 run が増えるたびに
+    生テーブル直読みの数字は変わる。2026-08-02 の再構築検証で実際に汚染が起き、
+    G3「クエリをそのまま流せばレポートの表が再現できる」が破れた。
+    母集団の定義（baseline_* view）を経由することで、後から行が増えても
+    レポートの数字が動かない。
+    """
+    raw = {"ml_runs", "infra_events"} & _referenced_tables()
+
+    assert not raw, f"比較クエリが生テーブルを読んでいる: {sorted(raw)}"
+    assert {"baseline_runs", "baseline_infra_events"} <= _referenced_tables()
+
+
+def test_baseline_views_are_defined_in_schema() -> None:
+    assert {"baseline_runs", "baseline_infra_events"} <= _schema_views()
+
+
+def test_baseline_boundary_is_single_valued() -> None:
+    """境界 timestamp は2つの view で同一の1値。ずれると母集団が2つに割れる。"""
+    boundaries = set(re.findall(r"created_at < timestamptz '([^']+)'", SCHEMA))
+
+    assert len(boundaries) == 1, f"境界がぶれている: {sorted(boundaries)}"
+    # baseline 最終行 12:03Z と最初の campaign 後 run 17:17Z の間にあること（実測の事実）
+    assert boundaries == {"2026-08-01 15:00:00+00"}
