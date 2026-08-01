@@ -42,6 +42,10 @@ ADAPTERS: dict[Platform, type] = {
 
 DEFAULT_FALLBACK_DIR = Path("artifacts/fallback")
 
+# Vertex AI Experiments へ複写するときの実験名。**未設定なら複写しない**（既定は無効）。
+# 秘密ではないが実行のたびにクラウドへ書くので、config.yaml で常時 ON にはしない。
+VERTEX_EXPERIMENT_ENV = "MCML_VERTEX_EXPERIMENT"
+
 
 def build_adapter(platform: Platform, *, sink: RunSink, settings: Settings | None = None) -> Any:
     """解決済み設定から adapter を作る。設定不足は ConfigError で落ちる。"""
@@ -57,6 +61,10 @@ def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSi
 
     環境変数名は contracts.tracking から取る。connection.py から import すると
     その時点で psycopg が要求され、**psycopg の無い環境で JSONL 経路まで死ぬ**。
+
+    `MCML_VERTEX_EXPERIMENT` があると、Vertex の run を Vertex AI Experiments へも
+    複写する（`platforms.vertex.experiment_sink`）。**Neon が正本のまま**の decorator で、
+    未設定なら経路は一切変わらない（既定は無効）。
     """
     import os  # noqa: PLC0415 - 環境判定のみ
 
@@ -64,11 +72,30 @@ def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSi
     if not os.environ.get(NEON_POOLED_URI_ENV):
         from core.telemetry.sinks import JsonlRunSink  # noqa: PLC0415
 
-        return JsonlRunSink(directory)
+        return with_experiment_mirror(platform, JsonlRunSink(directory))
 
     from platforms.neon.run_sink import NeonRunSink  # noqa: PLC0415 - psycopg 依存
 
-    return NeonRunSink()
+    return with_experiment_mirror(platform, NeonRunSink())
+
+
+def with_experiment_mirror(platform: Platform, sink: RunSink) -> RunSink:
+    """Vertex かつ実験名が設定されているときだけ Experiments 複写を挟む。
+
+    **既定は無効。** 有効化はクラウドへの書き込みを増やす（＝課金と残留の対象が増える）
+    ので、環境変数を明示したときだけ働かせる。他基盤では常に素通し
+    （Experiments は Vertex のサービスで、他基盤の run を入れると
+    「Experiments に5基盤が揃っている」という誤解を生む）。
+    """
+    import os  # noqa: PLC0415 - 環境判定のみ
+
+    experiment = os.environ.get(VERTEX_EXPERIMENT_ENV)
+    if platform is not Platform.VERTEX or not experiment:
+        return sink
+
+    from platforms.vertex.experiment_sink import VertexExperimentSink  # noqa: PLC0415
+
+    return VertexExperimentSink(sink, experiment=experiment)
 
 
 def deploy_reference(
