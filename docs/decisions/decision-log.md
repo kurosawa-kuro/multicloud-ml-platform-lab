@@ -131,3 +131,27 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 結果 (outcome): 対応しないことで確定。`credentials.md §3` と `02_sagemaker.md` に
   「未計測」「意図的にそのまま」と明記済み。
 - link: [credentials.md §3](../runbooks/credentials.md) / [02_sagemaker.md](../comparison/02_sagemaker.md)
+
+## 2026-08-02 — 公開のため git 履歴を作り直し、5基盤 run の code_revision 検証を名指し免除にする（owner 判断）
+
+- type: risk-accepted
+- 背景: 公開監査でクレデンシャルは 0 件だったが、実クラウドの識別子（AWS アカウント ID・
+  GCP プロジェクト ID・Databricks ワークスペース URL・Snowflake アカウント/ユーザー・
+  個人メール）が追跡ファイルに残り、履歴にも AWS アカウント ID 21 回・`KUROMAILSERVER`
+  99 回出ていた。ファイルを直しても公開リポの履歴からは消えない。
+- 根拠 (why): 履歴書き換え（filter-repo）は既存 SHA を全て変え、`ml_runs.code_revision` と
+  `docs/comparison/` の対応を壊す。一次データとの紐付けを守るため、**private の履歴は書き換えず
+  作り直す**方を選んだ（owner が `rm -rf .git && git init` を実行）。
+- 影響範囲 (blast radius): **`src/core/ml` の tree 一致を「再検証する手段」が5基盤 run について
+  永久に失われた**。検証した事実そのものは残る（リセット前に実測し tree hash は5つとも
+  `a1b73934` で一致。記録は `test_code_revision_parity.py` の docstring と `docs/comparison/`）。
+  ただし値を再導出できないので、定数と突き合わせるテストは同語反復になり書けない。
+- 対応: `PRE_HISTORY_RESET_REVISIONS` に**5 SHA を名指し**して免除。
+  「解決できないものは飛ばす」には**しない** —— それをやると埋め込み漏れや別リポ由来の SHA を
+  持つ新しい run が黙って通る。名指し以外の未解決 SHA は
+  `test_only_pre_reset_revisions_are_unresolvable` が落とす（偽 SHA を混ぜて発火を実証済み）。
+- 撤退条件 (stop/revert): 5基盤を再実行して新しい run を記録できたら、免除リストを削除し
+  元の「全 run のコミットが実在する」形へ戻す。
+- 結果 (outcome): `make test` 574 passed。以後の run はこのゲートが本来の強さで見る。
+- link: [test_code_revision_parity.py](../../tests/comparison/test_code_revision_parity.py) /
+  [credentials.md §0-a](../runbooks/credentials.md)

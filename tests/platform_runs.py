@@ -30,6 +30,28 @@ EXPECTED_PLATFORMS = frozenset({"vertex", "sagemaker", "azureml", "databricks", 
 # recorded commits; this subtree may not.
 TRAINING_SUBTREE = "src/core/ml"
 
+# 2026-08-02: 公開のため git 履歴を作り直した（`rm -rf .git && git init`）。下の5コミットは
+# その旧履歴にあり、**このリポジトリからは二度と解決できない**。
+#
+# 失われたのは「5基盤が同一の学習コードで動いた」ことを *再* 検証する手段であって、
+# 検証した事実そのものではない。リセット前に実測済みで、`src/core/ml` の tree hash は
+# 5つとも `a1b73934` で一致していた（test_code_revision_parity.py の docstring に記録）。
+# ただし **その値をここから再導出することはできない**ので、定数として突き合わせても
+# 同語反復にしかならない。だから tree 一致の検証は「解決できる run」に対してだけ行う。
+#
+# 免除を SHA の名指しにしているのは、これを「解決できないものは全部飛ばす」にすると
+# **新しい run が埋め込み漏れや別リポ由来の SHA を持っていても黙って通る**ため。
+# ここに載っていない未解決 SHA は落とす。
+PRE_HISTORY_RESET_REVISIONS: frozenset[str] = frozenset(
+    {
+        "ddb1f092795a5200d82639f4a87f59861f25ff39",  # azureml
+        "4129907cae5b4add86367d950b8415be4370552a",  # databricks
+        "7e6dc1c00f96dd716d82299981c017900e29df5a",  # sagemaker
+        "e4eeaab5658a23640d8118d0b6a39292ebb66712",  # snowflake
+        "35d48cbbb92e8700f78ea54df8fc9495d4d7fff2",  # vertex
+    }
+)
+
 
 @dataclass(frozen=True)
 class PlatformRun:
