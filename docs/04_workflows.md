@@ -18,7 +18,7 @@ git status --short
 ```
 
 1. [tasks/README.md](./tasks/README.md) を見る。
-2. `docs/tasks/01_active/` から今日の task を選ぶ（Phase 着手時はまず `02_backlog/` の precheck を消化する）。
+2. `docs/tasks/03_active/` から今日の task を選ぶ（Phase 着手時はまず `02_backlog/` の precheck を消化する）。
 3. task に Scope / Plan / Acceptance Criteria があることを確認する。
 4. 中規模以上なら Skeleton を固定してから実装する。
 

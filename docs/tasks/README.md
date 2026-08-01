@@ -2,7 +2,7 @@
 
 このディレクトリは、毎日の作業計画・調査・実装チェックリスト・完了証跡の実行ハブ。プロダクトの挙動・アーキテクチャ・データモデル・運用 runbook の正本ではないが、「今日何をするか」「次に何をするか」「何を完了したか」はここを正とする。
 
-確定した仕様は `docs/specs/`、判断は `docs/adr/`、繰り返す運用は `docs/runbooks/`、再利用する作業手順は `.claude/skills/` に置く。
+確定した仕様は `docs/specs/`、判断は `docs/decisions/`、繰り返す運用は `docs/runbooks/`、再利用する作業手順は `.claude/skills/` に置く。
 
 ## 日次運用
 
@@ -13,7 +13,7 @@
 5. 実装・基本検証が済んだら `04_verifying/` へ mv し、terminal signal（監視 probe 緑化など）を待つ。
 6. signal を緑と観測できたら証跡を追記し、`05_done/` へ mv する。
 7. 仕様として残すべき内容は `docs/specs/` や 01〜08 文書へ昇格する。
-7. 判断理由として残すべき内容は `docs/adr/` へ昇格する。
+8. 判断理由として残すべき内容は `docs/decisions/` へ昇格する。
 
 `tasks/` は軽く保つが、軽すぎて運用履歴が消えるのは避ける。日々の作業で迷ったら、まず task に書いてから実装へ進む。
 
@@ -31,7 +31,11 @@
 | `02_backlog/` | 未着手 | 形にはなったが未着手。**owner 判断待ち**もここで待つ（着手前に判断が要るもの） |
 | `03_active/` | 進行中 | 進行中、または次に実行するもの（手を動かす段） |
 | `04_verifying/` | 収束待ち | 実装・基本検証は完了したが、terminal state（監視 probe 緑化など）が未観測で done にできない状態 |
-| `05_done/` | 完了 | terminal state を観測して完了。必要なら判断を ADR に昇格する |
+| `05_done/` | 完了 | terminal state を観測して完了。必要なら判断を `docs/decisions/` へ昇格する |
+
+**5つとも実在させる**（2026-08-02 整理）。以前は `01_active/` という規約外のフォルダがあり、
+README の記述（5状態）と実在（3状態）がずれていた。空の状態フォルダは git が追跡しないため
+`.gitkeep` を置いてある。**空でも消さないこと** —— 消すと同じずれが再発する。
 
 ### 04_verifying（収束待ち）の入退室ルール
 
@@ -56,16 +60,16 @@
 | `.claude/skills/create-task` | ユーザー依頼からタスクノートを作る |
 | `.claude/skills/execute-task` | 挙動とテストを保ったままタスクを実行する |
 | `.claude/skills/review-task` | 範囲・根拠・クローズ可否の観点でタスクをレビューする |
-| `.claude/skills/project-review` | プロジェクト構成と責務境界をレビューする |
-| `.claude/skills/refactor-plan` | 早すぎる共通化を避けてリファクタを計画する |
-| `.claude/skills/hallucination-check` | 結論前に主張をファイルとコマンドで検証する |
-| `.claude/skills/skeleton-first` | テスト・実装の前にビジネスロジックレスのスケルトンで構造を固定する |
+| `.claude/skills/review-project` | プロジェクト構成と責務境界をレビューする |
+| `.claude/skills/plan-refactor` | 早すぎる共通化を避けてリファクタを計画する |
+| `.claude/skills/check-claims` | 結論前に主張をファイルとコマンドで検証する |
+| `.claude/skills/plan-skeleton` | テスト・実装の前にビジネスロジックレスのスケルトンで構造を固定する |
 
 ## Active
 
 | ファイル | 用途 |
 |---|---|
-| [01_active/refactoring-candidates.md](01_active/refactoring-candidates.md) | 残りのクリーンアップ候補 |
+| [03_active/refactoring-candidates.md](03_active/refactoring-candidates.md) | 残りのクリーンアップ候補 |
 
 ## ルール
 
@@ -92,4 +96,4 @@
 ```
 
 次に着手できる作業は
-[01_active/refactoring-candidates.md](01_active/refactoring-candidates.md) で管理する。
+[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md) で管理する。

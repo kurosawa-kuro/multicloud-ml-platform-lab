@@ -96,7 +96,7 @@
 
 ## 関連タスク
 
-- 要件追加・変更は、まず `docs/tasks/01_active/` または `docs/tasks/02_backlog/` に task として記録する。
+- 要件追加・変更は、まず `docs/tasks/03_active/` または `docs/tasks/02_backlog/` に task として記録する。
 - 確定した要件だけをこの文書へ反映する。
 - 要件変更に伴う未実装作業は `docs/tasks/README.md` から追跡できる状態にする。
 - 未確定論点（各 Phase 開始前の precheck。実アカウントが要るものだけが残っている）:
