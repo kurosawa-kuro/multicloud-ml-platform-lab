@@ -40,10 +40,6 @@ serving = ["fastapi>=0.120,<0.121", "uvicorn>=0.38,<0.39"]
 # adapter はジョブを投げる側＝ローカル/オーケストレータでのみ import される。
 # artifact-registry は scripts/check_residual.py が残留検査で使う（aiplatform には含まれない）
 gcp = ["google-cloud-aiplatform>=1.163,<1.164", "google-cloud-artifact-registry>=1.20,<1.21"]
-# Vertex AI Pipelines の定義をコンパイルするときだけ要る（修正11）。
-# **gcp extra には入れない** —— 既定のフェーズ実行（run_phase.py）は kfp を import しない。
-# パイプラインは「既存 CLI を並べる薄い DAG」なので、実行時の依存は増えない。
-pipelines = ["kfp>=2.14,<2.15"]
 # platforms/sagemaker 用。sagemaker SDK ではなく boto3 の低レベル API を使う
 # （BYOC 統一が要件で、Estimator の script mode 前提に隠されると比較にならない）。
 aws = ["boto3>=1.43,<1.44"]
