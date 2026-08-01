@@ -155,3 +155,24 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 結果 (outcome): `make test` 574 passed。以後の run はこのゲートが本来の強さで見る。
 - link: [test_code_revision_parity.py](../../tests/comparison/test_code_revision_parity.py) /
   [credentials.md §0-a](../runbooks/credentials.md)
+
+## 2026-08-02 — 実験管理は A（併存）を採用。Neon を正本のまま Vertex の run だけ複写する（owner 判断）
+
+- type: adopted
+- 選択肢: **A 併存**（採用）/ B 置換（Neon をやめ横断集計層を自前で作る）/ C 不採用
+- 根拠 (why): B は3点で敗着。① 要件 UC-003「Neon の SELECT だけで5基盤比較」が単一テーブル
+  前提で、Experiments は Vertex のサービスなので置換すると横断集計層を**自前で**作ることになり
+  「自前実装を減らす」動機と矛盾する。② `attempt` は Neon の同一 (platform, stage) 過去行数+1 が
+  正本（`platforms/shared/contracts/tracking.py:87`）で、移すと permission friction が別物になる。
+  ③ SDK 1.163.0 の `log_params` は `Dict[str, float|int|str]` しか受けず実行時に型検査するため、
+  比較6列のうち native に載るのは `status`（`Execution.State`）だけで残り5列は generic な params 止まり
+  ＝**格納はできるが比較軸として引けない**。C は、基盤ネイティブの実験管理の見え方自体が
+  比較材料であり、複写コストが decorator 1枚 + 既定 OFF に収まったので退けた。
+- 影響範囲 (blast radius): 小。`RunSink` の decorator 1枚で、`PlatformAdapter` /
+  `ml_runs` スキーマ / Tier B adapter は不変。`MCML_VERTEX_EXPERIMENT` 未設定なら経路も変わらない。
+- 撤退条件 (stop/revert): Experiments 対応のために `RunSink` 契約か `_tracked()` を
+  変えたくなったら、それは A が成り立っていない証拠なので C（不採用）へ倒す。
+- 結果 (outcome): 実装済み（`src/platforms/vertex/experiment_sink.py`）。`make test` 588 passed。
+  **実クラウドでの複写確認は未実施** —— owner 判断で後続のクラウド作業とまとめて一括検証する。
+- link: [修正10 タスクノート](../tasks/04_verifying/2026-08-02-修正10-マネージド実験管理載せ替え試行.md) /
+  [credentials.md §1-a](../runbooks/credentials.md)
