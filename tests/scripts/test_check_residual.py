@@ -41,6 +41,20 @@ class FakeAiplatform:
         def list(cls) -> list[FakeModel]:
             return cls.listed
 
+    class Experiment:
+        listed: list[Any] = []
+
+        @classmethod
+        def list(cls) -> list[Any]:
+            return cls.listed
+
+    class ExperimentRun:
+        by_experiment: dict[str, list[Any]] = {}
+
+        @classmethod
+        def list(cls, experiment: str) -> list[Any]:
+            return cls.by_experiment.get(experiment, [])
+
 
 class FakeBucket:
     def __init__(self, name: str) -> None:
@@ -69,14 +83,25 @@ class FakeArtifactRegistry:
         return [type("Repo", (), {"name": r})() for r in self._repos]
 
 
+class FakeNamed:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
 def gcp_clients(
     endpoints: list[str],
     buckets: dict[str, int],
     repos: list[str],
     models: list[str] | None = None,
+    experiment_runs: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     FakeAiplatform.Endpoint.listed = [FakeEndpoint(e) for e in endpoints]
     FakeAiplatform.Model.listed = [FakeModel(m) for m in (models or [])]
+    runs = experiment_runs or {}
+    FakeAiplatform.Experiment.listed = [FakeNamed(name) for name in runs]
+    FakeAiplatform.ExperimentRun.by_experiment = {
+        name: [FakeNamed(r) for r in values] for name, values in runs.items()
+    }
     return {
         "aiplatform": FakeAiplatform,
         "storage": FakeStorage(buckets),
@@ -134,10 +159,14 @@ def test_unverifiable_check_becomes_error_not_silence() -> None:
         },
     )
 
-    # aiplatform を使う検査は endpoint / registered_model の2つ。**両方 ERROR で残る**
-    # （片方でも黙ると「残留ゼロ」と読めてしまう）
-    assert [f.severity for f in result.findings] == ["ERROR", "ERROR"]
-    assert {f.kind for f in result.findings} == {"vertex_endpoint", "registered_model"}
+    # aiplatform を使う検査は endpoint / registered_model / experiment_run の3つ。
+    # **すべて ERROR で残る**（1つでも黙ると「残留ゼロ」と読めてしまう）
+    assert [f.severity for f in result.findings] == ["ERROR", "ERROR", "ERROR"]
+    assert {f.kind for f in result.findings} == {
+        "vertex_endpoint",
+        "registered_model",
+        "experiment_run",
+    }
     assert result.exit_code() == 1
 
 
@@ -649,3 +678,39 @@ def test_parent_absent_codes_are_observed_not_guessed() -> None:
 
     for code in check_residual._PARENT_ABSENT_CODES:
         assert code.endswith("notfound"), f"親不在の判定に広すぎる文言がある: {code!r}"
+
+
+# --- Experiments（2026-08-02 追加）----------------------------------------
+
+
+def test_experiment_runs_are_reported_as_residual() -> None:
+    """Experiments の run は SDK が作るので terraform destroy では消えない。
+
+    2026-08-02、複写を入れた後の撤収で run が2件残っているのに検査は「残留なし」と
+    報告した —— 項目から漏れていたため。**課金がほぼ無いことと、検査から見えないことは別**。
+    """
+    result = residual.run_checks(
+        ["vertex"],
+        clients={
+            "vertex": gcp_clients(
+                [], {}, [], experiment_runs={"mcml-dev": ["train-1", "predict-2"]}
+            )
+        },
+    )
+
+    found = [f for f in result.findings if f.kind == "experiment_run"]
+    assert len(found) == 1
+    assert set(found[0].items) == {"mcml-dev/train-1", "mcml-dev/predict-2"}
+    # 課金が続くわけではないので WARN。FAIL と同列にすると Endpoint の重大さが薄まる
+    assert {f.severity for f in result.findings} == {"WARN"}
+    assert result.exit_code() == 0
+
+
+def test_other_projects_experiments_are_not_counted() -> None:
+    """本ラボ以外の実験を数えない（バケット誤検出と同じ轍を踏まない）。"""
+    result = residual.run_checks(
+        ["vertex"],
+        clients={"vertex": gcp_clients([], {}, [], experiment_runs={"someone-else": ["run-1"]})},
+    )
+
+    assert result.findings == []

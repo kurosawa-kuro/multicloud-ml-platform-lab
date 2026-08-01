@@ -1,13 +1,14 @@
-"""Vertex AI Experiments 複写（A: 併存）の検証。
+"""Vertex AI Experiments 複写（observer）の検証。
 
 **Experiments を実際に叩かない**（SDK を注入する）。ここで守るのは
-「複写を足しても計測の正本が動かない」こと。動くと5基盤比較が壊れる。
+「観測を足しても計測の正本が動かない」ことと、
+**学習成功行も観測される**こと（sink decorator だった頃の最大の欠陥）。
 
 守る不変条件:
-  - `next_attempt` は必ず inner（Neon）へ委譲する（attempt 採番の正本を移さない）
-  - `record_run` の戻り値は inner のもの（write_path の判定を横取りしない）
+  - observer は sink の契約を一切持たない（記録経路から降りている）
+  - `job_owns_success=True` の成功行 —— Neon へは書かれない行 —— も観測される
   - Vertex 以外の run は複写しない
-  - 複写が失敗しても呼び出し元へ伝えない（telemetry は非致命）
+  - 観測が失敗しても呼び出し元へ伝えない（telemetry は非致命）
   - `log_params` / `log_metrics` の型制約（float / int / str）を満たす
 """
 
@@ -27,8 +28,8 @@ from core.telemetry.schemas import (
     UnificationUnit,
     WritePath,
 )
-from platforms.vertex.experiment_sink import (
-    VertexExperimentSink,
+from platforms.vertex.experiment_observer import (
+    VertexExperimentObserver,
     experiment_run_name,
     to_metrics,
     to_params,
@@ -127,42 +128,76 @@ class FakeSdk:
         self.ExperimentRun = ExperimentRun
 
 
-# --- 正本を動かさないこと ------------------------------------------------
+# --- 記録経路から降りていること -------------------------------------------
 
 
-def test_next_attempt_is_always_delegated_to_inner() -> None:
-    """attempt の採番は Neon が正本。ここを移すと permission friction が別物になる。"""
+def test_observer_carries_no_sink_contract() -> None:
+    """observer が sink の契約を持たないこと。
+
+    decorator だった頃は `merge_run_params` を落として stage 跨ぎの再開を静かに壊した。
+    **契約を持たなければ落としようがない** —— それがこの再設計の要点。
+    """
+    observer = VertexExperimentObserver(experiment="exp", aiplatform=FakeSdk())
+
+    for name in ("record_run", "next_attempt", "merge_run_params"):
+        assert not hasattr(observer, name), f"observer が sink の {name} を持っている"
+
+
+def test_job_owned_success_is_still_observed() -> None:
+    """**学習成功行も観測される。** sink decorator だった頃の最大の欠陥がここ。
+
+    成功行はジョブ側が書く規約（`job_owns_success=True`）なので sink へは伝播しない。
+    decorator は sink の下流なので一緒に抑制され、Experiments に現れなかった（実クラウドで実測）。
+    observer は抑制と無関係に呼ばれる。
+    """
+    from core.telemetry.schemas import Stage
+    from platforms.shared.contracts.tracking import TrackedOperations
+
+    sdk = FakeSdk()
     inner = SpyInner()
-    sink = VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk())
 
-    assert sink.next_attempt(Platform.VERTEX, Stage.TRAIN) == 7
-    assert inner.attempt_calls == [(Platform.VERTEX, Stage.TRAIN)]
+    class Adapter(TrackedOperations):
+        platform = Platform.VERTEX
+
+        def __init__(self, sink: Any) -> None:
+            self._sink = sink
+
+    adapter = Adapter(inner)
+    adapter.attach_observer(VertexExperimentObserver(experiment="exp", aiplatform=sdk))
+
+    adapter._tracked(Stage.TRAIN, {}, lambda ctx: None, job_owns_success=True)
+
+    assert inner.runs == [], "成功行が Neon へ書かれている（行の所有規約が壊れた）"
+    assert len(sdk.created) == 1, "学習成功行が観測されていない"
 
 
-def test_record_run_returns_inner_write_path() -> None:
-    """write_path の判定は inner のもの。複写側が横取りすると到達経路が嘘になる。"""
-    inner = SpyInner(write_path=WritePath.COLLECTED)
-    sink = VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk())
+def test_observation_failure_does_not_reach_the_caller() -> None:
+    """観測は非致命。落ちても adapter の結果を変えない。"""
+    from core.telemetry.schemas import Stage
+    from platforms.shared.contracts.tracking import TrackedOperations
 
-    assert sink.record_run(make_run()) is WritePath.COLLECTED
-    assert len(inner.runs) == 1
+    class Adapter(TrackedOperations):
+        platform = Platform.VERTEX
 
+        def __init__(self, sink: Any) -> None:
+            self._sink = sink
 
-def test_mirror_failure_does_not_reach_the_caller() -> None:
-    """telemetry は非致命。複写が落ちても Neon の記録と戻り値は変えない。"""
-    inner = SpyInner()
-    sink = VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk(explode=True))
+    adapter = Adapter(SpyInner())
+    adapter.attach_observer(
+        VertexExperimentObserver(experiment="exp", aiplatform=FakeSdk(explode=True))
+    )
 
-    assert sink.record_run(make_run()) is WritePath.DIRECT
-    assert len(inner.runs) == 1
+    run = adapter._tracked(Stage.REGISTER, {}, lambda ctx: None)
+
+    assert run.status is Status.SUCCESS
 
 
 def test_non_vertex_runs_are_not_mirrored() -> None:
     """Experiments は Vertex のサービス。他基盤を入れると5基盤が揃って見える誤解を生む。"""
     sdk = FakeSdk()
-    sink = VertexExperimentSink(SpyInner(), experiment="exp", aiplatform=sdk)
+    observer = VertexExperimentObserver(experiment="exp", aiplatform=sdk)
 
-    sink.record_run(make_run(platform=Platform.SNOWFLAKE))
+    observer.observe(make_run(platform=Platform.SNOWFLAKE))
 
     assert sdk.created == []
 
@@ -173,9 +208,9 @@ def test_non_vertex_runs_are_not_mirrored() -> None:
 def test_six_columns_are_mirrored_as_params() -> None:
     """比較6列が Experiments 側にも載ること（引けるかは別問題・docstring 参照）。"""
     sdk = FakeSdk()
-    sink = VertexExperimentSink(SpyInner(), experiment="exp", aiplatform=sdk)
+    observer = VertexExperimentObserver(experiment="exp", aiplatform=sdk)
 
-    sink.record_run(make_run(status=Status.FAILURE))
+    observer.observe(make_run(status=Status.FAILURE))
 
     assert sdk.last_run is not None
     params = sdk.last_run.params
@@ -191,14 +226,25 @@ def test_status_maps_to_the_native_state() -> None:
     from google.cloud.aiplatform_v1.types.execution import Execution
 
     sdk = FakeSdk()
-    sink = VertexExperimentSink(SpyInner(), experiment="exp", aiplatform=sdk)
+    observer = VertexExperimentObserver(experiment="exp", aiplatform=sdk)
 
-    sink.record_run(make_run(status=Status.FAILURE))
+    observer.observe(make_run(status=Status.FAILURE))
     assert sdk.last_run is not None
     assert sdk.last_run.ended_state is Execution.State.FAILED
 
-    sink.record_run(make_run(status=Status.SUCCESS))
+    observer.observe(make_run(status=Status.SUCCESS))
     assert sdk.last_run.ended_state is Execution.State.COMPLETE
+
+
+def test_experiment_is_created_before_the_run() -> None:
+    """`ExperimentRun.create` は実験を作らない（`_get_experiment` を呼ぶだけ）。"""
+    sdk = FakeSdk()
+    observer = VertexExperimentObserver(experiment="mcml-dev", aiplatform=sdk)
+
+    observer.observe(make_run())
+
+    assert sdk.ensured == ["mcml-dev"]
+    assert sdk.created == [("train-0d5f7d2e-1111-4222-8333-444444444444", "mcml-dev")]
 
 
 @pytest.mark.parametrize(
@@ -209,8 +255,6 @@ def test_status_maps_to_the_native_state() -> None:
 def test_unsupported_param_types_are_stringified(value: Any) -> None:
     """SDK は float / int / str 以外を TypeError にする。
 
-    素通しすると **複写だけが落ちる**（Neon は正しい）状態になり、
-    「Experiments に無い run がある」理由が分からなくなる。
     bool を含めるのは `isinstance(True, int)` が真で、int として通ると
     Experiments 側に 1 / 0 で載って読めなくなるため。
     """
@@ -236,100 +280,24 @@ def test_run_name_is_lowercase_and_bounded() -> None:
     assert len(name) <= 128
 
 
-# --- 配線（factory.build_sink）-------------------------------------------
+# --- 配線（factory.build_observer）----------------------------------------
 
 
-def test_mirror_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_observer_is_null_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """既定は無効。設定しない限りクラウドへの書き込みを増やさない。"""
+    from core.telemetry.observers import NullObserver
     from platforms.shared import factory
 
     monkeypatch.delenv(factory.VERTEX_EXPERIMENT_ENV, raising=False)
-    inner = SpyInner()
 
-    assert factory.with_experiment_mirror(Platform.VERTEX, inner) is inner
+    assert isinstance(factory.build_observer(Platform.VERTEX), NullObserver)
 
 
-def test_mirror_wraps_only_vertex(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_observer_is_built_only_for_vertex(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.telemetry.observers import NullObserver
     from platforms.shared import factory
 
     monkeypatch.setenv(factory.VERTEX_EXPERIMENT_ENV, "mcml-dev")
-    inner = SpyInner()
 
-    assert factory.with_experiment_mirror(Platform.SNOWFLAKE, inner) is inner
-    assert isinstance(factory.with_experiment_mirror(Platform.VERTEX, inner), VertexExperimentSink)
-
-
-def test_experiment_is_created_before_the_run() -> None:
-    """`ExperimentRun.create` は実験を作らない（`_get_experiment` を呼ぶだけ）。
-
-    未作成のまま渡すと落ちるので、先に `get_or_create` する。冪等なので毎 run でよい。
-    """
-    sdk = FakeSdk()
-    sink = VertexExperimentSink(SpyInner(), experiment="mcml-dev", aiplatform=sdk)
-
-    sink.record_run(make_run())
-
-    assert sdk.ensured == ["mcml-dev"]
-    assert sdk.created == [("train-0d5f7d2e-1111-4222-8333-444444444444", "mcml-dev")]
-
-
-# --- decorator が inner の任意機能を落とさないこと -------------------------
-
-
-def test_optional_sink_capabilities_are_delegated() -> None:
-    """`merge_run_params` は RunSink の必須契約ではないが、落とすと resume が壊れる。
-
-    `TrackedOperations._merge_job_row_params` は getattr で存在を見るだけなので、
-    decorator が持っていないと**静かに何もせず戻る**。学習成功行の params が空のままになり
-    `run_phase.py vertex register` が止まる（2026-08-02 に実クラウドで踏んだ）。
-    """
-
-    class MergingInner(SpyInner):
-        def __init__(self) -> None:
-            super().__init__()
-            self.merged: list[tuple[str, dict[str, Any]]] = []
-
-        def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
-            self.merged.append((run_id, params))
-            return 1
-
-    inner = MergingInner()
-    sink = VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk())
-
-    sink.merge_run_params("r-1", {"model_artifact_uri": "gs://b/model"})
-
-    assert inner.merged == [("r-1", {"model_artifact_uri": "gs://b/model"})]
-
-
-def test_merge_is_reached_through_the_real_tracked_path() -> None:
-    """本物の `_tracked()` から decorator 越しに merge が届くこと。
-
-    ここを sink 単体テストだけにすると、`getattr` の名前がずれても気付けない。
-    """
-    from core.telemetry.schemas import Stage
-    from platforms.shared.contracts.tracking import TrackedOperations
-
-    merged: list[tuple[str, dict[str, Any]]] = []
-
-    class MergingInner(SpyInner):
-        def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
-            merged.append((run_id, params))
-            return 1
-
-    class Adapter(TrackedOperations):
-        platform = Platform.VERTEX
-
-        def __init__(self, sink: Any) -> None:
-            self._sink = sink
-
-    inner = MergingInner()
-    adapter = Adapter(VertexExperimentSink(inner, experiment="exp", aiplatform=FakeSdk()))
-
-    adapter._tracked(
-        Stage.TRAIN,
-        {},
-        lambda ctx: ctx.params.update({"model_artifact_uri": "gs://b/model"}),
-        job_owns_success=True,
-    )
-
-    assert merged and merged[0][1]["model_artifact_uri"] == "gs://b/model"
+    assert isinstance(factory.build_observer(Platform.SNOWFLAKE), NullObserver)
+    assert isinstance(factory.build_observer(Platform.VERTEX), VertexExperimentObserver)

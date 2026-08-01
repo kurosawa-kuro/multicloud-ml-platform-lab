@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from core.telemetry.observers import NullObserver, RunObserver
 from core.telemetry.schemas import Platform
 from core.telemetry.tracking import RunSink
 from platforms.azureml.adapter import AzureMLAdapter
@@ -47,10 +48,22 @@ DEFAULT_FALLBACK_DIR = Path("artifacts/fallback")
 VERTEX_EXPERIMENT_ENV = "MCML_VERTEX_EXPERIMENT"
 
 
-def build_adapter(platform: Platform, *, sink: RunSink, settings: Settings | None = None) -> Any:
-    """解決済み設定から adapter を作る。設定不足は ConfigError で落ちる。"""
+def build_adapter(
+    platform: Platform,
+    *,
+    sink: RunSink,
+    settings: Settings | None = None,
+    observer: RunObserver | None = None,
+) -> Any:
+    """解決済み設定から adapter を作る。設定不足は ConfigError で落ちる。
+
+    `observer` は **記録の正本とは別の観測層**（`core.telemetry.observers`）。
+    省略時は `build_observer()` が環境から決める（既定は何もしない）。
+    """
     resolved = settings if settings is not None else load_settings()
-    return ADAPTERS[platform](resolved.for_platform(platform), sink=sink)
+    adapter = ADAPTERS[platform](resolved.for_platform(platform), sink=sink)
+    adapter.attach_observer(observer if observer is not None else build_observer(platform))
+    return adapter
 
 
 def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSink:
@@ -62,9 +75,6 @@ def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSi
     環境変数名は contracts.tracking から取る。connection.py から import すると
     その時点で psycopg が要求され、**psycopg の無い環境で JSONL 経路まで死ぬ**。
 
-    `MCML_VERTEX_EXPERIMENT` があると、Vertex の run を Vertex AI Experiments へも
-    複写する（`platforms.vertex.experiment_sink`）。**Neon が正本のまま**の decorator で、
-    未設定なら経路は一切変わらない（既定は無効）。
     """
     import os  # noqa: PLC0415 - 環境判定のみ
 
@@ -72,30 +82,35 @@ def build_sink(platform: Platform, *, fallback_dir: Path | None = None) -> RunSi
     if not os.environ.get(NEON_POOLED_URI_ENV):
         from core.telemetry.sinks import JsonlRunSink  # noqa: PLC0415
 
-        return with_experiment_mirror(platform, JsonlRunSink(directory))
+        return JsonlRunSink(directory)
 
     from platforms.neon.run_sink import NeonRunSink  # noqa: PLC0415 - psycopg 依存
 
-    return with_experiment_mirror(platform, NeonRunSink())
+    return NeonRunSink()
 
 
-def with_experiment_mirror(platform: Platform, sink: RunSink) -> RunSink:
-    """Vertex かつ実験名が設定されているときだけ Experiments 複写を挟む。
+def build_observer(platform: Platform) -> RunObserver:
+    """run を横から見る層を決める。**記録の正本（sink）とは別物。**
 
-    **既定は無効。** 有効化はクラウドへの書き込みを増やす（＝課金と残留の対象が増える）
-    ので、環境変数を明示したときだけ働かせる。他基盤では常に素通し
-    （Experiments は Vertex のサービスで、他基盤の run を入れると
-    「Experiments に5基盤が揃っている」という誤解を生む）。
+    `MCML_VERTEX_EXPERIMENT` があるときだけ Vertex AI Experiments へ複写する。
+    **既定は何もしない。** 有効化はクラウドへの書き込みを増やす（＝課金と残留の対象が
+    増える）ので、環境変数を明示したときだけ働かせる。
+
+    Vertex 以外は常に `NullObserver`（Experiments は Vertex のサービス。他基盤の run を
+    入れると「Experiments に5基盤が揃っている」という誤解を生む）。
+
+    2026-08-02 まではこれを `build_sink` の decorator として挟んでいた。
+    記録経路から降ろした理由は `core.telemetry.observers` のモジュール docstring。
     """
     import os  # noqa: PLC0415 - 環境判定のみ
 
     experiment = os.environ.get(VERTEX_EXPERIMENT_ENV)
     if platform is not Platform.VERTEX or not experiment:
-        return sink
+        return NullObserver()
 
-    from platforms.vertex.experiment_sink import VertexExperimentSink  # noqa: PLC0415
+    from platforms.vertex.experiment_observer import VertexExperimentObserver  # noqa: PLC0415
 
-    return VertexExperimentSink(sink, experiment=experiment)
+    return VertexExperimentObserver(experiment=experiment)
 
 
 def deploy_reference(

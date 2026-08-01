@@ -224,3 +224,51 @@ task note は1タスクに閉じるので「最近このエージェントは曖
   テストが緑のまま壊れる経路を作る。契約に入れて機械的に守る。
 - link: [tracking.py](../../src/core/telemetry/tracking.py) /
   [test_sink_contract.py](../../tests/core/test_sink_contract.py)
+
+## 2026-08-02 — 「記録の正本」と「run の観測」を層として分ける（応急処置からの再設計・第2弾）
+
+- type: design-fix
+- 発端: owner から「動いたが応急処置に見える。ちゃんと再設計すべきでは」と2度目の指摘。
+  実際、直前の対応は (a) decorator に中継を1つ足す (b) 制約を docs に書く、で終わっていた。
+- 誤っていた構造: Experiments 複写を **sink の decorator** として実装していたため、
+  「Neon へ書く役」と「run を見る役」が同一物になっていた。帰結が2つ:
+  1. **学習成功行が観測されなかった。** 成功行はジョブ側が書く規約なので
+     `RecordingSink` が sink への伝播を抑制する。decorator は下流なので一緒に抑制され、
+     最も情報量の多い行が Experiments に現れなかった（実クラウドで実測）。
+     当初これを「sink decorator では原理的に届かない構造的制約」と説明したが、**誤り**。
+     `RecordingSink` は成功行を受け取ってから抑制しており、run 自体は手元にあった。
+     届かなかったのは設計の混同が原因で、制約ではない。
+  2. **観測が記録の契約を背負っていた。** decorator が `merge_run_params` を落として
+     stage 跨ぎの再開を静かに壊した。観測が記録の契約を持つ理由は無い。
+- 対応: `core/telemetry/observers.py` に `RunObserver` / `NullObserver` を新設し、
+  `TrackedOperations._tracked` が**抑制と無関係に**観測を呼ぶようにした。
+  Experiments 複写は `VertexExperimentObserver` へ作り替え、**sink の契約を1つも持たない**
+  （`record_run` も `next_attempt` も `merge_run_params` も無い＝落としようがない）。
+  配線は `factory.build_observer`、adapter への注入は `attach_observer`
+  （5基盤の `__init__` を変えないため。観測が誰かで adapter の挙動は変わらない）。
+- 残る限界（**制約であることを実測で確認済み**）: 学習成功行の `metrics`（RMSE 等）は
+  ジョブが書いた Neon の行にしか無い。学習コンテナは依存最小の制約で Vertex SDK を持てず
+  （`docker/training/Dockerfile`）、ジョブ側から観測させることもできない。
+  よって Experiments 上の学習 run は attempt / status / duration / params まで。
+  **これは今度こそ構造的制約**で、`observers.py` の docstring に境界として明記した。
+- 影響範囲 (blast radius): 中（記録経路の構造変更）だが挙動は不変。`make test` 601 passed。
+- link: [observers.py](../../src/core/telemetry/observers.py)
+
+## 2026-08-02 — 残留検査の穴（Experiments）と ADC quota project の回避策を設定へ落とす
+
+- type: design-fix
+- Experiments: `check_residual.py` に `experiment_run` を追加。SDK が作るので
+  `terraform destroy` では消えず、`registered_model` と**同じ構造の穴**だった。
+  実際、撤収後に run が2件残っているのに検査は「残留なし」と報告した。
+  **課金がほぼ無いことと、検査から見えないことは別**（このモジュールの判定原理）。
+  課金が継続しないので WARN（FAIL と同列にすると Endpoint の重大さが薄まる）。
+- ADC quota project: `billingbudgets` API は ADC に quota project を要求し、
+  予算アラートの作成だけが 403 で落ちていた。`gcloud auth application-default
+  set-quota-project` だけでは**足りない**（実測）。環境変数
+  （`USER_PROJECT_OVERRIDE` / `GOOGLE_BILLING_PROJECT`）で回避していたが、
+  **それは手順書に書く回避策であって設定ではない** —— 知らない人が apply すると同じ 403 を踏み、
+  ガードレールが黙って作られない。修正09 が潰したのはまさにその欠陥なので、
+  provider 設定（`user_project_override` / `billing_project`）に固定した。
+  env なしで `plan` が通ることを実測で確認。
+- link: [check_residual.py](../../scripts/check_residual.py) /
+  [gcp-dev/versions.tf](../../infra/environments/gcp-dev/versions.tf)

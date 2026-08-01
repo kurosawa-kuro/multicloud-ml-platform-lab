@@ -8,6 +8,9 @@
 
 このテストは「実装を1つ足したら適合も1つ増える」形にしてある。
 新しい sink を足して契約を満たしていなければ、ここが落ちる。
+
+なお Experiments 複写はこの後 **observer へ作り替えて記録経路から降ろした**
+（`core.telemetry.observers`）。sink の契約を持たない層は、契約を落としようがない。
 """
 
 from __future__ import annotations
@@ -25,7 +28,6 @@ SINK_IMPORTS = (
     ("core.telemetry.sinks", "JsonlRunSink"),
     ("platforms.neon.run_sink", "NeonRunSink"),
     ("platforms.shared.contracts.tracking", "RecordingSink"),
-    ("platforms.vertex.experiment_sink", "VertexExperimentSink"),
 )
 
 

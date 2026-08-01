@@ -261,7 +261,28 @@ def check_vertex(clients: dict[str, Any] | None = None) -> list[Finding]:
             if _is_lab_resource(m.display_name)
         ]
 
-    return [*endpoints(), *buckets(), *repositories(), *models()]
+    @guarded("vertex", "experiment_run", SEVERITY_WARN)
+    def experiment_runs() -> Iterable[str]:
+        """Vertex AI Experiments の run。**SDK が作るので terraform destroy では消えない。**
+
+        `registered_model` と同じ構造の穴。2026-08-02 に Experiments 複写を入れた際、
+        撤収後も run が2件残っているのに `check_residual` は「残留なし」と報告した
+        —— 検査項目から漏れていたため。**課金がほぼ無いことと、検査から見えないことは別**。
+        見えないままにすると「残留ゼロ」が嘘になる（このモジュールの判定原理）。
+
+        WARN にしているのは、ML Metadata の保管が課金を継続的に発生させないため。
+        FAIL（課金が続く）と同列に数えると Endpoint の重大さが薄まる。
+        """
+        experiments = client("aiplatform").Experiment.list()
+        found = []
+        for experiment in experiments:
+            if not _is_lab_resource(experiment.name):
+                continue
+            for run in client("aiplatform").ExperimentRun.list(experiment=experiment.name):
+                found.append(f"{experiment.name}/{run.name}")
+        return found
+
+    return [*endpoints(), *buckets(), *repositories(), *models(), *experiment_runs()]
 
 
 # --- SageMaker ------------------------------------------------------------
