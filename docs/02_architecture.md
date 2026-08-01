@@ -132,6 +132,17 @@ AWS / GCP / Azure 系（**Tier A**）と Databricks / Snowflake 系（**Tier B**
 | CLI + exit code 契約 | シム3枚と sproc の両方から同じ形で呼べる最小の共通面 | `EXIT_CODE_FAILURE_CLASS` |
 | プラットフォーム名で分岐しない | 分岐した瞬間「共通」が嘘になる | `test_core_boundaries`（AST の if 検査） |
 
+### 波及の封じ込め（層の向きの番人）
+
+「1つの修正が5基盤へ波及する」経路は3本あり、すべて機械的に塞いである:
+
+| 経路 | 規則 | 番人 |
+|---|---|---|
+| core → platforms | 禁止（core は基盤を知らない） | `test_core_boundaries` |
+| 共有契約層 → 基盤 / adapter → 他 adapter | 禁止 | `test_layer_direction`（shared/contracts は基盤 import ゼロ・adapter は横断 import ゼロ） |
+| 共有層の部分的な基盤知識 | **全5そろい（composition root: factory / config）か、ゼロか**。1〜4基盤だけ知るのは単一基盤の漏れ | `test_layer_direction`（all-or-none 判定） |
+| 記録契約の肥大 | RunSink はメソッド集合ごと pin（片実装の操作は契約に入れない） | `test_the_contract_is_pinned_to_the_intersection` |
+
 > この導出順序を破った実例と是正: 2026-08-02、Vertex AI Experiments 複写を
 > 「複写の仕組み」から設計して共通層（core / TrackedOperations / factory）へフックを
 > 置き、2度作り直した（[decision-log](./decisions/decision-log.md)）。
