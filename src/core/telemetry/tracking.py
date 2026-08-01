@@ -25,7 +25,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from core.ml.config.revision import code_revision
 from core.telemetry.schemas import (
@@ -82,16 +82,34 @@ def classify_failure(exc: BaseException) -> FailureClass:
     return FailureClass.SDK
 
 
+@runtime_checkable
 class RunSink(Protocol):
     """記録先。実体は core.telemetry.recorder.Recorder。
 
     Protocol にしているのは、Neon 到達不能時に JSONL fallback へ差し替えられる
     ようにするため（到達経路そのものが比較軸）。
+
+    ## `merge_run_params` を**必須**にしている理由（2026-08-02 の事故を受けて）
+
+    以前これは契約に無く、`TrackedOperations._merge_job_row_params` が
+    `getattr(sink, "merge_run_params", None)` の**文字列一致**で拾っていた。
+    その結果、それを持たない decorator（Experiments 複写）を1枚挟んだだけで
+    **静かに何もせず戻り**、学習成功行の `params` が空のまま = stage を跨いだ再開が
+    壊れた。ユニットテストは全て緑のままで、実クラウドで初めて露見した。
+
+    「任意機能を名前で拾う」設計は、**実装を1つ足すたびに同じ穴が開く**。
+    契約に入れておけば、忘れた実装は `tests/core/test_sink_contract.py` の
+    適合テストで落ちる。書けない sink は「何もしない」と明示的に書く
+    （`JsonlRunSink` がその例）。
     """
 
     def record_run(self, run: MlRun) -> WritePath: ...
 
     def next_attempt(self, platform: Platform, stage: Stage) -> int: ...
+
+    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
+        """既存 run 行の params へ追記する。戻り値は更新行数（不在なら 0）。"""
+        ...
 
 
 @dataclass

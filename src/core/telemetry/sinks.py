@@ -85,6 +85,15 @@ class JsonlRunSink:
             f.write(json.dumps(run_to_record(run), ensure_ascii=False) + "\n")
         return WritePath.COLLECTED
 
+    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
+        """**何もしない。** JSONL は追記専用で、既存行の更新という概念が無い。
+
+        `RunSink` の契約なので「書けない」ことを明示的に書く（黙って落とさない）。
+        JSONL 経路の run は `make collect` で Neon へ入るが、そのとき params は
+        ジョブが書いた行に既に含まれている。ここで足す相手がそもそも居ない。
+        """
+        return 0
+
     def next_attempt(self, platform: Platform, stage: Stage) -> int:
         """既存 JSONL を数えて attempt を進める。行数は高々数十なので線形走査で足りる。"""
         if not self._path.exists():

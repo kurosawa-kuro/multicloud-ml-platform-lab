@@ -74,6 +74,10 @@ class RecordingSink:
     def next_attempt(self, platform: Platform, stage: Stage) -> int:
         return self._inner.next_attempt(platform, stage)
 
+    def merge_run_params(self, run_id: str, params: dict[str, Any]) -> int:
+        """decorator なので中継する。落とすと `RunSink` 契約を満たさない。"""
+        return self._inner.merge_run_params(run_id, params)
+
 
 class TrackedOperations:
     """adapter の基底。`platform` と `_sink` を持つクラスに `_tracked()` を与える。
@@ -141,12 +145,16 @@ class TrackedOperations:
         **telemetry は非致命**（docs/06_error_policy.md）。足せなくても
         adapter の結果は変えない。行がまだ無い（collected 経路で `make collect`
         待ち）ケースも異常ではないので、静かに 0 件で終わる。
+
+        以前は `getattr(self._sink, "merge_run_params", None)` で**任意機能として
+        名前で拾って**いた。それを持たない decorator を1枚挟んだだけで静かに何も
+        しなくなり、再開が壊れた（2026-08-02・実クラウドで露見）。
+        `RunSink` の必須契約に格上げしたので、ここは素直に呼ぶ。
         """
-        merge = getattr(self._sink, "merge_run_params", None)
-        if merge is None or not run.params:
+        if not run.params:
             return
         try:
-            merge(run.run_id, dict(run.params))
+            self._sink.merge_run_params(run.run_id, dict(run.params))
         except Exception:  # noqa: BLE001 - 記録の失敗で学習結果を変えない
             logging.getLogger(f"platforms.{self.platform.value}").warning(
                 "run %s の params を足せなかった", run.run_id, exc_info=True

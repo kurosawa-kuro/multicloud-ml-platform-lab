@@ -198,3 +198,29 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 教訓: 「ブランチ実験は不要、調査で分かる」は修正10 では正しかったが、
   **実行環境の中身に依存する主張は静的検証では閉じない**。
 - link: [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
+
+## 2026-08-02 — `RunSink` の任意機能 duck-typing を廃し、`merge_run_params` を必須契約へ格上げする
+
+- type: design-fix（応急処置からの格上げ）
+- 何が起きていたか: `merge_run_params` は `RunSink` Protocol に無く、
+  `TrackedOperations._merge_job_row_params` が `getattr(sink, "merge_run_params", None)` の
+  **文字列一致**で拾っていた。それを持たない decorator（Experiments 複写）を1枚挟んだだけで
+  **静かに何もせず戻り**、学習成功行の `params` が空 = stage を跨いだ再開（修正07）が壊れた。
+  ユニットテストは全て緑のまま、実クラウドで初めて露見した。
+- なぜ「その decorator に中継を足す」で終わらせなかったか: それは**その1枚を直しただけ**で、
+  設計は「任意機能を名前で拾う」ままなので、**sink や decorator を足すたびに同じ穴が開く**。
+  owner から「応急処置に見える。再設計すべきでは」と指摘され、根に戻した。
+- 対応:
+  1. `RunSink` を `@runtime_checkable` にし、`merge_run_params` を**必須メソッド**として宣言
+  2. `_merge_job_row_params` の `getattr` を廃し、契約として素直に呼ぶ
+  3. 書けない sink は「何もしない」と**明示的に**書く（`JsonlRunSink` は追記専用なので 0 を返す）
+  4. decorator（`RecordingSink` / `VertexExperimentSink`）は中継を実装
+  5. `tests/core/test_sink_contract.py` を追加。全 sink 実装の契約適合と、
+     **一覧への追記漏れ検出**（src から `record_run` 定義クラスを走査して突き合わせ）まで見る。
+     契約を1つ落とすと落ちることを実際に確かめた（実演で 2 failed）
+- 影響範囲 (blast radius): 小。契約に1メソッド増えただけで挙動は不変。
+  `make test` 601 passed。
+- 教訓: **「ユニットテストが緑」と「契約を満たしている」は別**。任意機能を名前で拾う設計は、
+  テストが緑のまま壊れる経路を作る。契約に入れて機械的に守る。
+- link: [tracking.py](../../src/core/telemetry/tracking.py) /
+  [test_sink_contract.py](../../tests/core/test_sink_contract.py)
