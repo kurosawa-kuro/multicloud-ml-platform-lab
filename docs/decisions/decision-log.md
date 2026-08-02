@@ -356,3 +356,30 @@ task note は1タスクに閉じるので「最近このエージェントは曖
   signature で制約を確定したので、形の判定に実行は不要）
 - link: [02_architecture.md 制約表](../02_architecture.md) /
   [test_experiment_tracking_asymmetry.py](../../tests/platforms/test_experiment_tracking_asymmetry.py)
+
+## 2026-08-02 — パイプライン化を AWS / Azure へ展開: 「Vertex で見送った」は転移しなかった
+
+- type: adopted（導出順序の適用例・2件目）
+- 依頼: 「パイプライン対応を Azure / AWS も」。**Vertex の結論（P3 見送り）を横展開しなかった。**
+  各基盤の step の形を先に実測したところ、見送りの根拠そのものが AWS / Azure には無かった。
+- 実測した差:
+  - Vertex（KFP）… step = **コンテナ実行**。`run_phase.py` を動かす器
+    （orchestrator イメージ）が要る。学習イメージは依存最小で `scripts/` も adapter も
+    持たない → 実投入で exit 2。**P3 見送りは正しい**
+  - SageMaker … step = **学習ジョブの型付き宣言**（`Training` step の `Arguments` は
+    `CreateTrainingJob` のリクエストそのもの）。**間に立つコンテナが存在しない**
+  - Azure ML … step = **command job の合成**（`dsl.pipeline`）。同上
+  → 器の問題は Vertex 固有。AWS / Azure は adapter が既に組む仕様をそのまま載せられる。
+- 実装: 両基盤とも「投入経路とパイプライン経路で**同じ関数**を使う」形にした
+  （`SageMakerAdapter.training_request()` / `AzureMLAdapter.training_job()` を切り出し、
+  CLI 投入もパイプラインも同じ戻り値を使う）。別々に組むと「CLI では通るが
+  パイプラインでは落ちる」差が生まれ、比較が濁る。
+  学習イメージは不変なので `job_record` の意味論（write_path / failure_class / attempt）も同一。
+- 番人: `tests/platforms/test_pipeline_asymmetry.py`（9件）。同一仕様の再利用・
+  **器を要求しないこと**（要求し始めたら Vertex と同じ結論になるサイン）・
+  Vertex 実装が復活していないこと。
+- 検証: 実 Terraform outputs で SageMaker のパイプライン定義が組めることを確認
+  （クラウド未使用）／ make lint pass / make test 637 passed。**投入は未実施**。
+- 教訓: 1基盤で出た結論を他基盤へ転移しない。**見送りの根拠まで含めて制約を確認する。**
+- link: [02_architecture.md 制約表](../02_architecture.md) /
+  [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)

@@ -156,6 +156,72 @@ class SageMakerAdapter(TrackedOperations):
 
     # --- PlatformAdapter -------------------------------------------------
 
+    def training_request(
+        self, run_id: str, attempt: int, params: dict[str, Any], job_env: dict[str, str]
+    ) -> dict[str, Any]:
+        """`CreateTrainingJob` のリクエストを組み立てる（**投入はしない**）。
+
+        切り出してあるのは SageMaker Pipelines が**同じ仕様をそのまま**ステップに
+        載せられるため（`platforms/sagemaker/pipeline.py`）。Vertex と違い
+        ステップは「コンテナを動かす」のではなく「学習ジョブを宣言する」ので、
+        オーケストレータ用の別イメージが要らない —— この差が Vertex 側で
+        パイプライン化を見送った理由そのもの（修正11）。
+
+        投入経路とパイプライン経路で**同じ関数**を使うことが要点。別々に組むと
+        「CLI では通るがパイプラインでは落ちる」差が生まれ、比較が濁る。
+        """
+        cfg = self._config
+        job_name = self._job_name(run_id)
+        request: dict[str, Any] = {
+            "TrainingJobName": job_name,
+            "AlgorithmSpecification": {
+                "TrainingImage": cfg.training_image_uri,
+                "TrainingInputMode": "File",
+                "ContainerEntrypoint": ["bash", ENTRYPOINT_PATH],
+            },
+            "RoleArn": cfg.execution_role_arn,
+            "InputDataConfig": [
+                {
+                    "ChannelName": TRAINING_CHANNEL,
+                    "DataSource": {
+                        "S3DataSource": {
+                            "S3DataType": "S3Prefix",
+                            "S3Uri": f"s3://{cfg.bucket}/{cfg.data_prefix}",
+                            "S3DataDistributionType": "FullyReplicated",
+                        }
+                    },
+                }
+            ],
+            "OutputDataConfig": {"S3OutputPath": self.output_path()},
+            "ResourceConfig": {
+                "InstanceType": cfg.instance_type,
+                "InstanceCount": cfg.instance_count,
+                "VolumeSizeInGB": cfg.volume_size_gb,
+            },
+            "StoppingCondition": {"MaxRuntimeInSeconds": cfg.max_runtime_seconds},
+            # 値は文字列限定。型を保つため JSON 文字列を1キーに畳む
+            "HyperParameters": {
+                PARAMS_HYPERPARAMETER_KEY: json.dumps(params),
+                RUN_ID_HYPERPARAMETER_KEY: run_id,
+                ATTEMPT_HYPERPARAMETER_KEY: str(attempt),
+            },
+            "Tags": [{"Key": k, "Value": v} for k, v in cfg.tags.items()],
+        }
+        if job_env:
+            request["Environment"] = job_env
+        if cfg.experiment:
+            # 事後 API ではなく投入時の宣言。ジョブが起動しなければ実験にも載らない
+            # ＝ Vertex と違い「投入失敗の観測」は構造的に取れない（記録は Neon 側）
+            request["ExperimentConfig"] = {
+                "ExperimentName": cfg.experiment,
+                "TrialName": f"{cfg.job_prefix}-{run_id}"[:120],
+                "TrialComponentDisplayName": f"train-attempt-{attempt}",
+            }
+        if cfg.use_spot:
+            request["EnableManagedSpotTraining"] = True
+            request["StoppingCondition"]["MaxWaitTimeInSeconds"] = cfg.max_wait_seconds
+        return request
+
     def submit_training(self, params: dict[str, Any]) -> MlRun:
         """Training Job を投入し、完了を待って成果物 URI を確定する。
 
@@ -166,62 +232,12 @@ class SageMakerAdapter(TrackedOperations):
         **成功時の ml_runs 行はジョブ側が書く**（job_record.py の所有者規約）。
         Neon 接続情報は Environment で渡す。
         """
-        cfg = self._config
         attempt = self._next_attempt(Stage.TRAIN)
         job_env = telemetry_env()
 
         def call(ctx: RunContext) -> None:
-            job_name = self._job_name(ctx.run_id)
-            request: dict[str, Any] = {
-                "TrainingJobName": job_name,
-                "AlgorithmSpecification": {
-                    "TrainingImage": cfg.training_image_uri,
-                    "TrainingInputMode": "File",
-                    # BYOC。イメージ既定の `train` ではなくシムを明示する
-                    "ContainerEntrypoint": ["bash", ENTRYPOINT_PATH],
-                },
-                "RoleArn": cfg.execution_role_arn,
-                "InputDataConfig": [
-                    {
-                        "ChannelName": TRAINING_CHANNEL,
-                        "DataSource": {
-                            "S3DataSource": {
-                                "S3DataType": "S3Prefix",
-                                "S3Uri": f"s3://{cfg.bucket}/{cfg.data_prefix}",
-                                "S3DataDistributionType": "FullyReplicated",
-                            }
-                        },
-                    }
-                ],
-                "OutputDataConfig": {"S3OutputPath": self.output_path()},
-                "ResourceConfig": {
-                    "InstanceType": cfg.instance_type,
-                    "InstanceCount": cfg.instance_count,
-                    "VolumeSizeInGB": cfg.volume_size_gb,
-                },
-                "StoppingCondition": {"MaxRuntimeInSeconds": cfg.max_runtime_seconds},
-                # 値は文字列限定。型を保つため JSON 文字列を1キーに畳む
-                "HyperParameters": {
-                    PARAMS_HYPERPARAMETER_KEY: json.dumps(params),
-                    RUN_ID_HYPERPARAMETER_KEY: ctx.run_id,
-                    ATTEMPT_HYPERPARAMETER_KEY: str(attempt),
-                },
-                "Tags": [{"Key": k, "Value": v} for k, v in cfg.tags.items()],
-            }
-            if job_env:
-                request["Environment"] = job_env
-            if cfg.experiment:
-                # 事後 API ではなく投入時の宣言。ジョブが起動しなければ実験にも載らない
-                # ＝ Vertex と違い「投入失敗の観測」は構造的に取れない（記録は Neon 側）
-                request["ExperimentConfig"] = {
-                    "ExperimentName": cfg.experiment,
-                    "TrialName": f"{cfg.job_prefix}-{ctx.run_id}"[:120],
-                    "TrialComponentDisplayName": f"train-attempt-{attempt}",
-                }
-            if cfg.use_spot:
-                request["EnableManagedSpotTraining"] = True
-                request["StoppingCondition"]["MaxWaitTimeInSeconds"] = cfg.max_wait_seconds
-
+            request = self.training_request(ctx.run_id, attempt, params, job_env)
+            job_name = request["TrainingJobName"]
             self.sagemaker.create_training_job(**request)
             self.training_job_name = job_name
             self._wait("training_job_completed_or_stopped", TrainingJobName=job_name)

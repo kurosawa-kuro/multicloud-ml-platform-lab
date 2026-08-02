@@ -180,6 +180,40 @@ class AzureMLAdapter(TrackedOperations):
 
     # --- PlatformAdapter -------------------------------------------------
 
+    def training_job(
+        self, run_id: str, attempt: int, params_json: str, job_env: dict[str, str]
+    ) -> Any:
+        """学習用の command job を組み立てる（**投入はしない**）。
+
+        切り出してあるのは Azure ML Pipelines が**同じ job をそのまま**ステップとして
+        合成できるため（`platforms/azureml/pipeline.py`）。Vertex と違い
+        ステップは「コンテナを動かす」のではなく「command job を並べる」ので、
+        オーケストレータ用の別イメージが要らない —— この差が Vertex 側で
+        パイプライン化を見送った理由そのもの（修正11）。
+
+        投入経路とパイプライン経路で**同じ関数**を使うことが要点。別々に組むと
+        「CLI では通るがパイプラインでは落ちる」差が生まれ、比較が濁る。
+        """
+        cfg = self._config
+        return self.entities.command(
+            display_name=f"{cfg.model_name}-train",
+            experiment_name=cfg.experiment,
+            compute=cfg.compute_cluster,
+            environment=self.entities.Environment(image=cfg.training_image_uri),
+            environment_variables=job_env,
+            inputs={"data": self.entities.Input(type="uri_folder", path=cfg.data_uri)},
+            outputs={"model": self.entities.Output(type="uri_folder")},
+            command=(
+                f"bash {ENTRYPOINT_PATH} "
+                "--input ${{inputs.data}} "
+                "--output ${{outputs.model}} "
+                f"--params '{params_json}' "
+                f"--run-id {run_id} "
+                f"--attempt {attempt}"
+            ),
+            tags=cfg.tags,
+        )
+
     def submit_training(self, params: dict[str, Any]) -> MlRun:
         """Command Job を投入し、完了まで待つ。
 
@@ -189,30 +223,12 @@ class AzureMLAdapter(TrackedOperations):
         run_id / attempt を引数で渡し、**成功時の ml_runs 行はジョブ側が書く**
         （job_record.py の所有者規約）。Neon 接続情報は environment_variables で渡す。
         """
-        cfg = self._config
         params_json = json.dumps(params)
         attempt = self._next_attempt(Stage.TRAIN)
         job_env = telemetry_env()
 
         def call(ctx: RunContext) -> None:
-            job = self.entities.command(
-                display_name=f"{cfg.model_name}-train",
-                experiment_name=cfg.experiment,
-                compute=cfg.compute_cluster,
-                environment=self.entities.Environment(image=cfg.training_image_uri),
-                environment_variables=job_env,
-                inputs={"data": self.entities.Input(type="uri_folder", path=cfg.data_uri)},
-                outputs={"model": self.entities.Output(type="uri_folder")},
-                command=(
-                    f"bash {ENTRYPOINT_PATH} "
-                    "--input ${{inputs.data}} "
-                    "--output ${{outputs.model}} "
-                    f"--params '{params_json}' "
-                    f"--run-id {ctx.run_id} "
-                    f"--attempt {attempt}"
-                ),
-                tags=cfg.tags,
-            )
+            job = self.training_job(ctx.run_id, attempt, params_json, job_env)
             created = self.client.jobs.create_or_update(job)
             self.job_name = created.name
             # stream() は完了までブロックする（失敗時は例外）

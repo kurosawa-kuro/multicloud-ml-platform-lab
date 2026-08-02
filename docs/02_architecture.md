@@ -85,13 +85,13 @@ src/core/ml (単一SHA・依存最小)
 
 ### 手順1: 各インフラの制約を実測で確定する
 
-| 基盤 | 実行単位 | 依存の自由度 | 外向き egress | デプロイの意味 | 実験追跡の形 |
-|---|---|---|---|---|---|
-| Vertex | コンテナ（イメージは自前） | 完全（イメージに焼ける） | 開いている | Endpoint（常時課金） | **事後 API**（全 stage 可） |
-| SageMaker | コンテナ（`/opt/ml` 契約・model.tar.gz） | 完全 | 開いている | Endpoint（常時課金） | **投入時パラメータ**（学習のみ） |
-| Azure ML | コンテナ（マウントが1段深い） | 完全 | 開いている | Endpoint（常時課金） | 投入時パラメータ（**常に属す**） |
-| Databricks | **パッケージ**（wheel を ML Runtime へ） | **制約あり**（Runtime プリインストール版と衝突しうる） | 制限（trusted domains / serverless 設定） | Serving（scale-to-zero） | MLflow 内蔵（ワークスペースパス） |
-| Snowflake | **パッケージ**（zip を warehouse sproc へ） | **強い制約**（Anaconda channel 限定） | **トライアルでは閉**（EAI 不可） | Registry の版切替 | **無い** |
+| 基盤 | 実行単位 | 依存の自由度 | 外向き egress | デプロイの意味 | 実験追跡の形 | パイプラインの step |
+|---|---|---|---|---|---|---|
+| Vertex | コンテナ（イメージは自前） | 完全（イメージに焼ける） | 開いている | Endpoint（常時課金） | **事後 API**（全 stage 可） | **コンテナ実行**（器が要る→見送り） |
+| SageMaker | コンテナ（`/opt/ml` 契約・model.tar.gz） | 完全 | 開いている | Endpoint（常時課金） | **投入時パラメータ**（学習のみ） | 学習ジョブの**型付き宣言**（器不要） |
+| Azure ML | コンテナ（マウントが1段深い） | 完全 | 開いている | Endpoint（常時課金） | 投入時パラメータ（**常に属す**） | **command job の合成**（器不要） |
+| Databricks | **パッケージ**（wheel を ML Runtime へ） | **制約あり**（Runtime プリインストール版と衝突しうる） | 制限（trusted domains / serverless 設定） | Serving（scale-to-zero） | MLflow 内蔵（ワークスペースパス） | Jobs（本ラボ非対象） |
+| Snowflake | **パッケージ**（zip を warehouse sproc へ） | **強い制約**（Anaconda channel 限定） | **トライアルでは閉**（EAI 不可） | Registry の版切替 | **無い** | 無い（sproc 直） |
 
 ### 手順2: 2系統の差を認める
 
@@ -116,6 +116,7 @@ AWS / GCP / Azure 系（**Tier A**）と Databricks / Snowflake 系（**Tier B**
 | egress の差（direct / collected） | **記録する** | **記録層**が2経路を対等に実装（`job_record` + JSONL fallback + `make collect`）し、`write_path` に残す | 比較クエリ（write_path 内訳） |
 | デプロイの意味論・レジストリの形 | **記録する** | **adapter 層**。port は形だけ揃え、中身の差は隠さない（`ports.py`「port を切る基準」） | 比較レポート 01〜05 |
 | Spot の有無（B に概念が無い） | 吸収する | **config 層**が「効かない基盤を明示列挙して落とす」（黙って捨てない） | `test_platforms_config` |
+| パイプライン化（オーケストレータをマネージドへ） | **形の差が結論を分ける。揃えない** | Vertex=step がコンテナ実行 → **器（orchestrator イメージ）が要り見送り（P3）**／SageMaker=step が学習ジョブの型付き宣言・Azure=step が command job の合成 → **器が不要なので実装** | `test_pipeline_asymmetry`（同一仕様の再利用・器を要求しないこと・Vertex 実装の非復活） |
 | 基盤ネイティブの実験追跡 | **形の差は吸収しない。名前だけ揃える** | 各 adapter。Vertex=事後 API（`_tracked` override）/ SageMaker=投入時 `ExperimentConfig`（学習のみ）/ Azure=`command(experiment_name=)`（常に属す）/ Databricks=MLflow パス / Snowflake=**フィールドを置かない** | `test_experiment_tracking_asymmetry`（フィールド名の統一・既定値の差・Snowflake の不在・observer の非移植） |
 | 単一基盤にしかない機能の共通層への漏れ | **共通層に置かない** | その基盤の adapter 内 | `test_common_layers_do_not_know_the_observer` |
 | stage 間の受け渡しの永続化（resume 用の後付け merge） | **契約で均さない** | **driver 機能**（`resume.persist_handoff`。direct 系統は merge、collected 系統は None で明示スキップ）。RunSink 契約は record_run / next_attempt の**2メソッドに固定** | `test_the_contract_is_pinned_to_the_intersection` / `test_spine_no_longer_carries_the_merge_concern` |
