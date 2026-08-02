@@ -156,6 +156,36 @@ class SageMakerAdapter(TrackedOperations):
 
     # --- PlatformAdapter -------------------------------------------------
 
+    def _ensure_experiment(self, trial_name: str) -> None:
+        """Experiment と Trial を先に作る。**SageMaker はどちらも自動作成しない。**
+
+        `CreateTrainingJob` に `ExperimentConfig` を渡しても、実験や Trial が無ければ
+        `ResourceNotFound: Experiment/Trial '...' does not exist` で**投入自体が失敗する**
+        （2026-08-02 実クラウドで2段階とも実測）。Vertex の `ExperimentRun.create` が
+        実験を作らないのと同型の罠だが、**こちらは記録の失敗では済まず学習が飛ばない**。
+        観測が計測を壊さないよう、投入前に確実に用意する。
+
+        既存時の例外は正常系として飲む（冪等）。
+        """
+        experiment = self._config.experiment
+        if not experiment:
+            return
+        self._create_ignoring_conflict(
+            self.sagemaker.create_experiment, ExperimentName=experiment
+        )
+        self._create_ignoring_conflict(
+            self.sagemaker.create_trial, ExperimentName=experiment, TrialName=trial_name
+        )
+
+    @staticmethod
+    def _create_ignoring_conflict(create: Any, **kwargs: Any) -> None:
+        try:
+            create(**kwargs)
+        except Exception as exc:  # noqa: BLE001 - 既存なら成功扱い
+            text = str(exc).lower()
+            if "already exist" not in text and "validationexception" not in text:
+                raise
+
     def training_request(
         self, run_id: str, attempt: int, params: dict[str, Any], job_env: dict[str, str]
     ) -> dict[str, Any]:
@@ -237,6 +267,8 @@ class SageMakerAdapter(TrackedOperations):
 
         def call(ctx: RunContext) -> None:
             request = self.training_request(ctx.run_id, attempt, params, job_env)
+            if "ExperimentConfig" in request:
+                self._ensure_experiment(request["ExperimentConfig"]["TrialName"])
             job_name = request["TrainingJobName"]
             self.sagemaker.create_training_job(**request)
             self.training_job_name = job_name

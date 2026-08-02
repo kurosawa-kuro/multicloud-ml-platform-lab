@@ -35,10 +35,28 @@ class FakeSageMaker:
         self.job_status = job_status
         self.calls: list[str] = []
         self.training_requests: list[dict[str, Any]] = []
+        self.experiments: list[dict[str, Any]] = []
+        self.trials: list[dict[str, Any]] = []
         self.model_packages: list[dict[str, Any]] = []
         self.models: list[dict[str, Any]] = []
         self.endpoint_configs: list[dict[str, Any]] = []
         self.endpoints: list[dict[str, Any]] = []
+
+    def create_experiment(self, **kwargs: Any) -> dict[str, Any]:
+        """実 API と同じく**明示作成が要る**（自動作成しない）。
+
+        本物は実験/Trial が無いと CreateTrainingJob が ResourceNotFound で落ちる
+        （2026-08-02 実クラウドで実測）。fake が黙って受けると、その罠を
+        テストで踏めなくなる。
+        """
+        self.calls.append("create_experiment")
+        self.experiments.append(kwargs)
+        return {"ExperimentArn": "arn:aws:sagemaker:...:experiment/x"}
+
+    def create_trial(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append("create_trial")
+        self.trials.append(kwargs)
+        return {"TrialArn": "arn:aws:sagemaker:...:experiment-trial/x"}
 
     def create_training_job(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append("create_training_job")

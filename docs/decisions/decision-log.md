@@ -174,7 +174,7 @@ task note は1タスクに閉じるので「最近このエージェントは曖
   変えたくなったら、それは A が成り立っていない証拠なので C（不採用）へ倒す。
 - 結果 (outcome): 実装済み（`src/platforms/vertex/experiment_sink.py`）。`make test` 588 passed。
   **実クラウドでの複写確認は未実施** —— owner 判断で後続のクラウド作業とまとめて一括検証する。
-- link: [修正10 タスクノート](../tasks/04_verifying/2026-08-02-修正10-マネージド実験管理載せ替え試行.md) /
+- link: [修正10 タスクノート](../tasks/05_done/2026-08-02-修正10-マネージド実験管理載せ替え試行.md) /
   [credentials.md §1-a](../runbooks/credentials.md)
 
 ## 2026-08-02 — パイプライン載せ替えは「既存イメージで載る」が実投入で反証された（記録）
@@ -197,7 +197,7 @@ task note は1タスクに閉じるので「最近このエージェントは曖
   P3 パイプライン化を見送る。**owner 判断待ち**（`04_verifying` の修正11 ノート）。
 - 教訓: 「ブランチ実験は不要、調査で分かる」は修正10 では正しかったが、
   **実行環境の中身に依存する主張は静的検証では閉じない**。
-- link: [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
+- link: [修正11 ノート](../tasks/05_done/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
 
 ## 2026-08-02 — `RunSink` の任意機能 duck-typing を廃し、`merge_run_params` を必須契約へ格上げする
 
@@ -382,7 +382,7 @@ task note は1タスクに閉じるので「最近このエージェントは曖
   （クラウド未使用）／ make lint pass / make test 637 passed。**投入は未実施**。
 - 教訓: 1基盤で出た結論を他基盤へ転移しない。**見送りの根拠まで含めて制約を確認する。**
 - link: [02_architecture.md 制約表](../02_architecture.md) /
-  [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
+  [修正11 ノート](../tasks/05_done/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
 
 ## 2026-08-02 — 死蔵（実装したが配線しない）を番人で止める
 
@@ -431,4 +431,40 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 検証: make lint pass / make test 647 passed。投入は未（GCP 基盤は撤収済みのため、
   再構築を伴う一括検証で実施）。
 - link: [orchestrator Dockerfile](../../docker/orchestrator/Dockerfile) /
-  [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
+  [修正11 ノート](../tasks/05_done/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
+
+## 2026-08-02 — 実験管理・パイプラインの3基盤フル実クラウド検証（Evidence Level 4）
+
+- type: verified
+- 実施: GCP / AWS / Azure を再構築 → 実験管理・パイプラインを全経路で投入 → 撤収。
+- **実クラウドでしか出ない欠陥を5件検出して直した**（すべてユニットテストは緑だった）:
+  1. **SageMaker は Experiment / Trial を自動作成しない** —— `ExperimentConfig` を渡すだけでは
+     `ResourceNotFound` で **学習ごと投入失敗**。Vertex の `get_or_create` と同型だが、
+     あちらは記録の失敗で済むのに対し**こちらは計測そのものが飛ぶ**。投入前に両方作る実装へ。
+     fake も実 API に合わせ（黙って受けない）、罠をテストで踏めるようにした。
+  2. **Vertex パイプラインのステップ SA が自己 impersonation を持たない** ——
+     `actAs` は人間ユーザーにしか付いておらず、ステップ（SA として実行）が
+     CustomJob を投げられない。IaC に `runner_act_as_self` を追加。
+  3. **SageMaker Pipelines のステップが自己 PassRole を持たない** —— 上と同型。
+     実行ロールに `iam:PassRole`（自ロール）+ 学習投入権限を追加。
+     **どちらも CLI 経路では踏まない、パイプライン化して初めて要る権限**。
+  4. **器に pyyaml が無く exit 2** —— `env/config.yaml` を読めない。学習イメージは
+     config.yaml を読まないので不要だった依存で、器を分ける理由の実例。
+  5. **resume の互換ガードが git を要求** —— 器には git も .git も無く
+     `FileNotFoundError`。器には **`CODE_REVISION` が焼き込まれている**ので、
+     記録と同値なら同じコードは自明として先に通す実装へ。緩めてはいない
+     （不一致なら従来の tree hash 判定へ進み、不能なら止まる）。
+     途中「定義時に URI を固定して渡す」案を試したが、train は自分の run_id で書くため
+     404 になり**設計として誤り**と実測で判明（差し戻した）。
+  6. Azure の blob data RBAC は runbook の手打ちだったので IaC へ落とした
+     （Workspace 側の割当は Azure が自動作成するため二重に作らない）。
+- 検証結果（すべて成功を実測）:
+  - 実験管理: Vertex（**学習成功行も複写**・observer 再設計の核心を実証）/
+    SageMaker（TrialComponent `train-attempt-5`）/ Azure（job が実験 `mcml-dev` に所属）
+  - パイプライン: Vertex **SUCCEEDED**（train→register 両ステップ成功）/
+    SageMaker **Succeeded** / Azure **Completed**
+  - `ml_runs`: 3基盤ともパイプライン経由の run が `write_path=direct`・attempt 連番で記録。
+    **CLI 経路と同じ意味論**が保たれることを実証
+- 撤収: GCP 18 / AWS 15 / Azure 11 リソース destroy。
+- link: [修正10](../tasks/05_done/2026-08-02-修正10-マネージド実験管理載せ替え試行.md) /
+  [修正11](../tasks/05_done/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)

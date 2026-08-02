@@ -117,6 +117,20 @@ resource "google_service_account_iam_member" "submitter_act_as" {
   member             = "user:${var.vertex_submitter_email}"
 }
 
+# **SA 自身にも actAs を与える**（自己 impersonation）。
+# Vertex AI Pipelines のステップはこの SA として走り、その中の run_phase が
+# CustomJob を「同じ SA で」投入する。人間ユーザーの binding だけでは
+# `You do not have permission to act as service_account` で落ちる
+# （2026-08-02 にパイプライン実投入で実測）。
+#
+# CLI 実行（人間の ADC → 投入）では踏まない経路なので、**パイプライン化して
+# 初めて必要になった権限**。ここが Vertex の step=コンテナ実行という制約の帰結。
+resource "google_service_account_iam_member" "runner_act_as_self" {
+  service_account_id = google_service_account.vertex_runner.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.vertex_runner.email}"
+}
+
 # ----- Endpoint（器のみ） -----
 #
 # モデルの deploy（deployed_models / traffic_split）は provider の computed 扱いで、

@@ -91,13 +91,24 @@ def training_tree(revision: str = "HEAD") -> str | None:
     None は「判定できない」であって「一致した」ではない。呼び出し側は
     確認できないまま先へ進まず、明示指定を求める。
     """
-    result = subprocess.run(
-        ["git", "rev-parse", f"{revision}:{TRAINING_SUBTREE}"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", f"{revision}:{TRAINING_SUBTREE}"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, NotADirectoryError):
+        # **git が無い環境**（コンテナ内の driver。orchestrator イメージには .git も
+        # git バイナリも無い）。ここで例外を上げると resume が到達不能になる
+        # ——2026-08-02 に Vertex パイプラインの register ステップが
+        # `FileNotFoundError: 'git'` で落ちて実測。
+        #
+        # **None を返すのは「判定できない」の意味**であり「一致した」ではない。
+        # 呼び出し側（_require_compatible）は None を互換 OK と扱わず、
+        # 明示指定を求めて止まる ＝ 安全側に倒れる設計は保たれる。
+        return None
     return result.stdout.strip() if result.returncode == 0 else None
 
 
@@ -117,7 +128,27 @@ def _fetch_latest(platform: Platform, stage: Stage, key: str, connect: Any) -> R
 
 
 def _require_compatible(point: ResumePoint, stage: Stage) -> ResumePoint:
-    """再開元が現在の checkout と同じ学習コードで作られたことを確かめる。"""
+    """再開元が現在の checkout と同じ学習コードで作られたことを確かめる。
+
+    ## git が無い環境（コンテナ内の driver）での判定
+
+    tree hash 比較は git を要る。器（orchestrator イメージ）には git も .git も無い
+    ——**しかしビルド時に `CODE_REVISION` が焼き込まれている**。焼き込んだ値と
+    記録された `code_revision` が**同一なら、同じコードであることは自明**
+    （tree hash を引くまでもない）。ここだけ先に判定する。
+
+    緩めているのではない: 一致しない場合は従来どおり tree hash 判定へ進み、
+    それが不能なら **止まる**（判定できないまま先へ進まない設計は不変）。
+    2026-08-02 に Vertex パイプラインの register ステップで実測した経路。
+    """
+    from core.ml.config.revision import code_revision  # noqa: PLC0415 - 循環回避
+
+    try:
+        if code_revision() == point.code_revision:
+            return point
+    except Exception:  # noqa: BLE001 - 解決できないなら tree hash 判定へ落とす
+        pass
+
     current = training_tree("HEAD")
     recorded = training_tree(point.code_revision)
     if current is None or recorded is None:

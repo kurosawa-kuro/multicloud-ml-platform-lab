@@ -102,9 +102,16 @@ def build_pipeline(
 ) -> Any:
     """train → register の2ステップ DAG を組む。
 
-    各ステップは **`run_phase.py vertex <stage>` の1回実行**。stage 間の受け渡しは
-    Neon 経由（修正07 の resume）なので、KFP の artifact 配線は作らない
-    ＝ CLI 実行とパイプライン実行で経路が変わらない。
+    ## 受け渡しは CLI 経路と同じ resume（Neon 経由）
+
+    run_id は adapter が発番するので**定義時には決まらない**。定義時に URI を固定して
+    渡す案は、train が自分の run_id で書いた場所と一致せず 404 になった（2026-08-02 実測）。
+
+    したがって register は CLI と同じく Neon から引く。その互換ガードは
+    tree hash を git で突き合わせるが、器には git が無い ——
+    **ビルド時に焼き込んだ `CODE_REVISION` が記録と一致すれば同じコードは自明**
+    なので、`resume._require_compatible` がその場合を先に通す（緩めてはいない。
+    不一致なら従来どおり tree hash 判定へ進み、不能なら止まる）。
     """
     from kfp import dsl  # noqa: PLC0415 - kfp は pipelines extra（既定の実行経路に載せない）
 

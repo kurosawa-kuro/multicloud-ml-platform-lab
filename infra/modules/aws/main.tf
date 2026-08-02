@@ -272,6 +272,31 @@ resource "aws_iam_policy" "sagemaker_exec" {
         Action   = ["cloudwatch:PutMetricData"]
         Resource = "*"
       },
+      {
+        # SageMaker Pipelines のステップはこのロールで走り、その中で
+        # CreateTrainingJob を「同じロールを渡して」呼ぶ。自己 PassRole が無いと
+        # `not authorized to perform: iam:PassRole` でステップが落ちる
+        # （2026-08-02 にパイプライン実投入で実測）。
+        #
+        # CLI 実行（人間の資格情報 → 投入）では踏まない経路なので、
+        # **パイプライン化して初めて必要になった権限**。Vertex 側の
+        # runner_act_as_self（自己 impersonation）と同型の帰結。
+        Sid      = "PassSelfForPipelineSteps"
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.sagemaker_exec.arn
+      },
+      {
+        # ステップから学習ジョブを投入・監視するための最小権限。
+        Sid    = "PipelineStepSubmitsTraining"
+        Effect = "Allow"
+        Action = [
+          "sagemaker:CreateTrainingJob",
+          "sagemaker:DescribeTrainingJob",
+          "sagemaker:AddTags",
+        ]
+        Resource = "*"
+      },
     ]
   })
 

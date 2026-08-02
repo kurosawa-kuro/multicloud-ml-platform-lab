@@ -140,3 +140,8 @@ def test_sagemaker_experiment_config_is_sent_when_set() -> None:
     sent = sm.training_requests[0]["ExperimentConfig"]
     assert sent["ExperimentName"] == "mcml-dev"
     assert sent["TrialComponentDisplayName"].startswith("train-attempt-")
+
+    # **Experiment と Trial を先に作ること。** SageMaker は自動作成しないので、
+    # 作らずに投入すると ResourceNotFound で**学習ごと落ちる**（実クラウドで実測）。
+    assert [e["ExperimentName"] for e in sm.experiments] == ["mcml-dev"]
+    assert sm.trials and sm.trials[0]["TrialName"] == sent["TrialName"]

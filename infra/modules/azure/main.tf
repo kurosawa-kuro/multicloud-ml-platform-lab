@@ -158,6 +158,22 @@ resource "azurerm_role_assignment" "workspace_acr_pull" {
   principal_id         = azurerm_machine_learning_workspace.main.identity[0].principal_id
 }
 
+# データ配布（scripts/distribute.py）と成果物回収のための data-plane RBAC。
+#
+# Storage Account の**コントロールプレーン権限（Contributor 等）では blob を読み書きできない**。
+# `AuthorizationPermissionMismatch` になる（2026-08-02 に実測。手順書 §3 では
+# `az role assignment create` の手打ちで解いていた）。
+# **手順書だけにある回避策は再現性を持たない**ので IaC に落とす（修正04 と同じ判断）。
+resource "azurerm_role_assignment" "operator_blob_data" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# Workspace のマネージド ID は **Workspace 作成時に Azure 側が同じ割当を自動で作る**
+# ことがある（2026-08-02 に 409 RoleAssignmentExists で実測）。二重に作らない。
+# 運用者側（operator_blob_data）は自動では付かないので上で明示的に作る。
+
 # ----- Compute Cluster -----
 #
 # min_node_count = 0 + idle scale down が必須。1 以上にするとジョブが無くても課金される。

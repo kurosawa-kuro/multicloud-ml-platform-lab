@@ -41,8 +41,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# オーケストレータの依存 = core の依存 + aiplatform（vertex adapter）+ psycopg（Neon 記録）。
-# 学習イメージとの差分は aiplatform だけに保つ（太らせない）。
+# オーケストレータの依存 = core の依存 + aiplatform（vertex adapter）+ psycopg（Neon 記録）
+# + pyyaml（env/config.yaml の読み取り）。
+# **pyyaml を忘れると `設定エラー: pyyaml が無い` で exit 2 になる**（2026-08-02 実測）。
+# 学習イメージは config.yaml を読まないので不要 —— この差が器を分ける理由の1つ。
 COPY pyproject.toml README.md ./
 RUN uv pip install --system --no-cache \
         "lightgbm>=4.6,<4.7" \
@@ -50,7 +52,8 @@ RUN uv pip install --system --no-cache \
         "pandas>=2.3,<2.4" \
         "pyarrow>=21.0,<22.0" \
         "psycopg[binary]>=3.2,<3.3" \
-        "google-cloud-aiplatform>=1.163,<1.164"
+        "google-cloud-aiplatform>=1.163,<1.164" \
+        "pyyaml>=6.0,<7.0"
 
 # run_phase が factory 経由で5 adapter モジュールを import するため src/platforms は
 # 全部入れる（SDK は遅延 import なので aiplatform 以外の SDK は不要）。
