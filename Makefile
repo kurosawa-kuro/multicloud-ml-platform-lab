@@ -126,6 +126,11 @@ docker-build: ## 学習イメージをビルド（Tier A 3基盤共通）
 		--build-arg CODE_REVISION="$$(git rev-parse HEAD)" \
 		-t $(IMAGE):$(TAG) .
 
+docker-build-orchestrator: ## Vertex パイプラインの器（run_phase を動かすイメージ）をビルド
+	docker build -f docker/orchestrator/Dockerfile \
+		--build-arg CODE_REVISION="$$(git rev-parse HEAD)" \
+		-t mcml-orchestrator:$(TAG) .
+
 docker-build-serving: ## 推論イメージをビルド（Tier A 3契約を1イメージで満たす）
 	docker build -f docker/serving/Dockerfile \
 		--build-arg CODE_REVISION="$$(git rev-parse HEAD)" \

@@ -69,6 +69,10 @@ class VertexConfig:
     # Vertex 固有の関心なので、共通層ではなくこの config が持つ（ports.py の
     # 「5基盤ぶんの実装が並ぶものだけ port にする」に従う）。
     experiment: str | None = None
+    # パイプラインのステップに使う器（docker/orchestrator/Dockerfile）。
+    # 未指定なら training と同じレジストリの orchestrator を使う
+    # （platforms/vertex/pipeline.py の orchestrator_image()）。
+    orchestrator_image_uri: str | None = None
     # 推論契約（src/core/app/api/routes.py の Vertex 用ルート）
     predict_route: str = "/predict"
     health_route: str = "/health"

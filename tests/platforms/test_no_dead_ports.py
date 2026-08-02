@@ -25,6 +25,7 @@ ENTRY_POINTS = sorted((REPO_ROOT / "scripts").glob("*.py")) + [REPO_ROOT / "Make
 FEATURE_MODULES = (
     "platforms/sagemaker/pipeline.py",
     "platforms/azureml/pipeline.py",
+    "platforms/vertex/pipeline.py",
     "platforms/vertex/experiment_observer.py",
     "platforms/shared/artifacts.py",
     "platforms/shared/resume.py",
@@ -92,9 +93,7 @@ def test_pipeline_entry_point_exists_and_covers_supported_platforms() -> None:
 
     run_pipeline = load_script("run_pipeline")
 
-    assert set(run_pipeline.SUPPORTED) == {"sagemaker", "azureml"}
-    # Vertex は器が無く見送り（P3）。黙って足さない
-    assert "vertex" not in run_pipeline.SUPPORTED
+    assert set(run_pipeline.SUPPORTED) == {"sagemaker", "azureml", "vertex"}
 
 
 def test_makefile_exposes_the_pipeline_targets() -> None:

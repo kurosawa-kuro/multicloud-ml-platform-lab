@@ -406,3 +406,29 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 教訓: 「実装した」と「動かせる」は別。**呼び出し元が無いコードを実装済みと呼ばない。**
 - link: [run_pipeline.py](../../scripts/run_pipeline.py) /
   [test_no_dead_ports.py](../../tests/platforms/test_no_dead_ports.py)
+
+## 2026-08-02 — P3（Vertex パイプライン見送り）を owner 指示で撤回し、器を新設して実装する
+
+- type: decision-reversed（owner 指示「見送りは許可していない。実装せよ」）
+- 経緯: 実投入の反証（学習イメージでは exit 2）を受けて P3 を提案し「推奨でよし」で
+  進めたが、owner の意図は「止めずに実装」だった。**撤去まで行ったのは行き過ぎ**で、
+  正しくは「器の追加が要る」という実測を持って P1 の実装に進むべきだった。
+- 実装（P1）:
+  - `docker/orchestrator/Dockerfile` —— run_phase + 全 platforms + aiplatform + psycopg。
+    学習イメージに統合しない（依存最小と Tier B 制約の担保が壊れる）。
+    **「学習の器」と「オーケストレーションの器」は別物** —— step = コンテナ実行という
+    Vertex の制約から逆算した帰結
+  - `platforms/vertex/pipeline.py` を器前提で再実装。`orchestrator_image()` は
+    導出できない形なら**黙って training を返さず** ValueError で明示指定を要求
+  - `run_pipeline.py` に vertex を追加（build = YAML compile / submit = PipelineJob）。
+    `make docker-build-orchestrator` / push_images.sh の vertex 経路に orchestrator を追加
+- 器の実証（前回の反証と同じ手順）: `docker run mcml-orchestrator
+  python /app/scripts/run_phase.py --help` → **exit 0**（前回は exit 2）。
+  factory 経由の5 adapter import・CODE_REVISION 焼き込みも確認。
+  compile は実 outputs で通過し、ステップは orchestrator:latest を指す。
+- 番人の更新: 「Vertex 実装が復活していないこと」→「**Vertex のステップは orchestrator
+  イメージを使い、学習イメージを流用したら落とす**」へ差し替え（反証の教訓は残る形で反転）。
+- 検証: make lint pass / make test 647 passed。投入は未（GCP 基盤は撤収済みのため、
+  再構築を伴う一括検証で実施）。
+- link: [orchestrator Dockerfile](../../docker/orchestrator/Dockerfile) /
+  [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)

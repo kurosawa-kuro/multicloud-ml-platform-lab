@@ -32,7 +32,9 @@ case "$PLATFORM" in
   vertex)
     PREFIX="$(outputs gcp-dev '.container_image_prefix.value')"
     gcloud auth configure-docker "${PREFIX%%/*}" --quiet
-    for image in training serving; do
+    # orchestrator = Vertex AI Pipelines のステップの器（他基盤には不要）。
+    # ローカルに無ければ黙って skip せず落とす（push 漏れ = パイプラインが exit 2 で死ぬ）
+    for image in training serving orchestrator; do
       docker tag "mcml-$image:$TAG" "$PREFIX/$image:$TAG"
       docker push "$PREFIX/$image:$TAG"
     done

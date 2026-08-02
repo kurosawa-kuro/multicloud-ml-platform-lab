@@ -7,7 +7,8 @@
     Vertex    : step = **コンテナ実行**（KFP）
                 → run_phase.py を動かす器（オーケストレータイメージ）が要る。
                   学習イメージには scripts/ も adapter も aiplatform も無い
-                  （依存最小の設計どおり）→ 実投入で exit 2。**P3 見送り**
+                  （依存最小の設計どおり）→ 学習イメージ流用は実投入で exit 2。
+                  **器 = docker/orchestrator/Dockerfile を追加して対応**（owner 指示）
     SageMaker : step = **学習ジョブの型付き宣言**（Training ステップの Arguments が
                   CreateTrainingJob のリクエストそのもの）→ 間に立つコンテナが無い。
                   **器の問題が発生しない**
@@ -17,8 +18,9 @@
 
   1. AWS / Azure のステップが **CLI 投入と同じ仕様**から作られること
      （別々に組むと「CLI では通るがパイプラインでは落ちる」差が生まれ比較が濁る）
-  2. **新しいイメージを要求しないこと**（器が要るなら Vertex と同じ結論になる）
-  3. Vertex のパイプライン実装が**復活していない**こと（P3 見送りのまま）
+  2. AWS / Azure は**新しいイメージを要求しない**こと（宣言型なので器が要らない）
+  3. Vertex のステップは **orchestrator イメージ**を使うこと。
+     **学習イメージを流用したら落とす**（実投入で反証済みの誤りの再演）
 """
 
 from __future__ import annotations
@@ -132,18 +134,55 @@ def test_neither_aws_nor_azure_pipeline_needs_a_new_image() -> None:
         assert not offenders, f"{module.__name__} が orchestrator を要求している: {offenders}"
 
 
-def test_vertex_pipeline_implementation_stays_removed() -> None:
-    """Vertex のパイプライン実装は P3（見送り）で撤去済み。復活していないこと。
+def test_vertex_steps_use_the_orchestrator_image_never_the_training_image() -> None:
+    """Vertex のステップは器（orchestrator イメージ）で動くこと。
 
-    復活させるなら器（オーケストレータイメージ）の追加とセットで、
-    owner 判断が要る（修正11 のノート）。
+    学習イメージを流用すると実投入で exit 2 で落ちる（2026-08-02 に実測・反証済み）。
+    ここが training を返し始めたら、その誤りの再演。
     """
-    from pathlib import Path
+    import pytest
 
-    from tests.conftest import REPO_ROOT
+    from platforms.vertex.pipeline import orchestrator_image
 
-    assert not (REPO_ROOT / "src" / "platforms" / "vertex" / "pipeline.py").exists()
-    assert not Path(REPO_ROOT / "scripts" / "compile_pipeline.py").exists()
+    training = "us-central1-docker.pkg.dev/p/mcml/training:latest"
+
+    derived = orchestrator_image(training)
+    assert derived == "us-central1-docker.pkg.dev/p/mcml/orchestrator:latest"
+    assert derived != training
+
+    # 明示指定が常に勝つ
+    assert orchestrator_image(training, "reg/orch:v1") == "reg/orch:v1"
+
+    # 導出できない形は黙って training を返さず、明示指定を要求して落ちる
+    with pytest.raises(ValueError):
+        orchestrator_image("reg/custom-image:latest")
+
+
+def test_vertex_pipeline_command_is_absolute_and_runs_the_shared_driver() -> None:
+    """ステップのコマンドが器内の絶対パスで run_phase を指すこと。
+
+    KFP は workdir を保証しない。相対パスにすると器があっても見つからない。
+    driver が run_phase であること = CLI 実行とパイプライン実行で同じ経路。
+    """
+    from platforms.vertex.pipeline import RUN_PHASE
+
+    assert RUN_PHASE == ["python", "/app/scripts/run_phase.py"]
+
+
+def test_vertex_step_env_passes_only_config_and_secret() -> None:
+    """手元の環境を丸ごとジョブ定義に載せない（コンソールから読めるため）。"""
+    from platforms.vertex.pipeline import step_env
+
+    selected = step_env(
+        {
+            "NEON_MULTICLOUD_POOLED_URI": "postgresql://u:p@h/db",
+            "MCML_VERTEX_PROJECT": "example-gcp-project",
+            "AWS_SECRET_ACCESS_KEY": "unrelated",
+            "CODE_REVISION": "deadbeef",  # 器に焼いた値を上書きさせない
+        }
+    )
+
+    assert set(selected) == {"NEON_MULTICLOUD_POOLED_URI", "MCML_VERTEX_PROJECT"}
 
 
 # --- Azure: 同じ job を合成すること -----------------------------------------
