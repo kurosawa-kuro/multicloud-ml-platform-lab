@@ -75,6 +75,17 @@ class SageMakerConfig:
     training_image_uri: str
     serving_image_uri: str | None = None
     model_package_group_name: str = "mcml-dev-models"
+    # SageMaker Experiments への関連付け。**None なら関連付けない**（既定 OFF）。
+    # env なら MCML_SAGEMAKER_EXPERIMENT（config.py の MCML_<PLATFORM>_<FIELD> 規約）。
+    #
+    # Vertex と形が違う: あちらは実行後に ExperimentRun を作る**事後 API** だが、
+    # SageMaker は CreateTrainingJob の `ExperimentConfig` = **投入時パラメータ**。
+    # したがって「複写」ではなく「投入の一部」であり、observer 層を持たない。
+    # register / deploy / predict には ExperimentConfig の口が無い（boto3 の
+    # service model で実測: CreateModel / CreateEndpoint / CreateModelPackage とも False）
+    # ため、**学習だけが実験に載る**。この非対称は吸収せず記録する
+    # （docs/02_architecture.md「設計の導出順序」手順3）。
+    experiment: str | None = None
     data_prefix: str = "data/california_housing"
     output_prefix: str = "runs"
     instance_type: str = "ml.m5.large"
@@ -199,6 +210,14 @@ class SageMakerAdapter(TrackedOperations):
             }
             if job_env:
                 request["Environment"] = job_env
+            if cfg.experiment:
+                # 事後 API ではなく投入時の宣言。ジョブが起動しなければ実験にも載らない
+                # ＝ Vertex と違い「投入失敗の観測」は構造的に取れない（記録は Neon 側）
+                request["ExperimentConfig"] = {
+                    "ExperimentName": cfg.experiment,
+                    "TrialName": f"{cfg.job_prefix}-{ctx.run_id}"[:120],
+                    "TrialComponentDisplayName": f"train-attempt-{attempt}",
+                }
             if cfg.use_spot:
                 request["EnableManagedSpotTraining"] = True
                 request["StoppingCondition"]["MaxWaitTimeInSeconds"] = cfg.max_wait_seconds

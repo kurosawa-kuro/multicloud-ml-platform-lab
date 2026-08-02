@@ -123,6 +123,12 @@ class SnowflakeConfig:
     account / user / 秘密鍵は環境変数（`SNOWFLAKE_*`）から `connection_parameters()` が
     読む。**秘密をこのオブジェクトに載せない。**
     """
+    # **実験の概念を持たない**（`experiment` フィールドを置かない）。
+    # Snowflake の内蔵実験追跡は限定的で、本ラボの範囲では使える口が無い
+    # （docs/02_architecture.md Tier B）。他4基盤が持つフィールドを「空で」置くと
+    # 「あるが未設定」に見えてしまうため、**無いものは無い**まま残す。
+    # 記録は Neon の ml_runs が一次であり、この非対称そのものが比較材料。
+
 
     database: str
     schema: str

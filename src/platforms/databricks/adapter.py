@@ -73,7 +73,11 @@ class DatabricksConfig:
     scale_to_zero: bool = True
     # MLflow の実験名（登録ジョブが run を置く場所）。wheel task には既定の実験が
     # 無く、指定しないと登録が `No experiment was found` で落ちる。
-    experiment_name: str = "mcml-lab"
+    # MLflow experiment のワークスペースパス片。Databricks は **MLflow が基盤内蔵**で、
+    # 実験は「ワークスペース上のパス」という別の存在（Vertex の事後 API でも
+    # SageMaker の投入パラメータでもない）。5基盤で同じ env 規約
+    # （MCML_<PLATFORM>_EXPERIMENT）で上書きできるよう名前だけ揃えた。
+    experiment: str = "mcml-lab"
     data_prefix: str = "data/california_housing"
     # `python -m build` が作る実 dist 名。**pyproject の name/version から導出する**
     # （python_wheel_task は dist 名から entry point を引く。ずれると起動しない）。
@@ -433,9 +437,9 @@ class DatabricksAdapter(TrackedOperations):
         """
         user = getattr(self.client.current_user.me(), "user_name", None)
         return (
-            f"/Users/{user}/{self._config.experiment_name}"
+            f"/Users/{user}/{self._config.experiment}"
             if user
-            else (f"/Shared/{self._config.experiment_name}")
+            else (f"/Shared/{self._config.experiment}")
         )
 
     def _model_versions(self) -> list[int]:

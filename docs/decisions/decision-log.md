@@ -327,3 +327,32 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - link: [core/telemetry/tracking.py](../../src/core/telemetry/tracking.py) /
   [resume.py](../../src/platforms/shared/resume.py) /
   [test_sink_contract.py](../../tests/core/test_sink_contract.py)
+
+## 2026-08-02 — 実験追跡を5基盤へ展開: 実装は移植せず、形の差を残した
+
+- type: adopted（導出順序の適用例）
+- 依頼: 「Vertex から AWS / Azure も対応」。**Vertex の実装は移植しなかった。**
+  導出順序どおり各基盤の制約を先に実測したところ、「実験追跡」は5基盤で形そのものが違った。
+- 実測（installed SDK の service model / signature）:
+  - Vertex … `ExperimentRun.create` = **事後 API**。全 stage を載せられる
+  - SageMaker … `CreateTrainingJob.ExperimentConfig` = **投入時パラメータ**。
+    `CreateModel` / `CreateEndpoint` / `CreateModelPackage` には口が**無い**（boto3 の
+    service model で False を確認）＝ **学習だけが実験に載る**
+  - Azure ML … `command(experiment_name=...)` = 投入時パラメータ。**job は常に実験に属す**
+    （「無効」という状態が無い）。**既に実装済みだった**
+  - Databricks … MLflow experiment のワークスペースパス = 基盤内蔵の別存在
+  - Snowflake … **無い**
+- 決定: 形の差は吸収せず、**フィールド名だけ揃える**（`experiment`。5基盤で同じ env 規約
+  `MCML_<PLATFORM>_EXPERIMENT` で上書きできる）。既定値も揃えない ——
+  Vertex / SageMaker は OFF を選べるが Azure / Databricks は選べないので、揃えると嘘になる。
+  Snowflake は**フィールド自体を置かない**（空フィールドは「あるが未設定」に見え、
+  比較レポートで「設定すれば使える」と誤読される）。
+- 実装: SageMaker は投入リクエストに `ExperimentConfig` を載せた（事後 API は生やさない。
+  Vertex の observer をコピーすると `ExperimentConfig` を使わない別経路ができ、
+  「SageMaker Experiments に載せた」が嘘になる）。Azure / Databricks は改名のみ。
+- 番人: `tests/platforms/test_experiment_tracking_asymmetry.py`（13件）。
+  「同じ実装であること」ではなく**非対称そのもの**を守る。
+- 検証: make lint pass / make test 628 passed（実クラウド未使用。SDK の service model と
+  signature で制約を確定したので、形の判定に実行は不要）
+- link: [02_architecture.md 制約表](../02_architecture.md) /
+  [test_experiment_tracking_asymmetry.py](../../tests/platforms/test_experiment_tracking_asymmetry.py)

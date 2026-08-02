@@ -77,7 +77,14 @@ class AzureMlConfig:
     deployment_name: str = "primary"
     endpoint_instance_type: str = "Standard_DS2_v2"
     endpoint_instance_count: int = 1
-    experiment_name: str = "multicloud-ml-platform-lab"
+    # Azure ML の実験は**ジョブ submit の必須概念**（省略すると既定名が使われる）。
+    # Vertex（事後 API）でも SageMaker（任意の投入パラメータ）でもなく、
+    # **常に何らかの実験に属する**のが Azure の制約。したがってここだけ既定値を持ち、
+    # 「無効化」という状態が存在しない。この非対称は吸収せず記録する
+    # （docs/02_architecture.md「設計の導出順序」手順3）。
+    # 名前は `experiment` に揃えた（3基盤で同じフィールド名 = 同じ env 規約
+    # MCML_<PLATFORM>_EXPERIMENT で上書きできる）。
+    experiment: str = "multicloud-ml-platform-lab"
     tags: dict[str, str] = field(default_factory=lambda: {"project": "multicloud-ml-platform-lab"})
 
 
@@ -190,7 +197,7 @@ class AzureMLAdapter(TrackedOperations):
         def call(ctx: RunContext) -> None:
             job = self.entities.command(
                 display_name=f"{cfg.model_name}-train",
-                experiment_name=cfg.experiment_name,
+                experiment_name=cfg.experiment,
                 compute=cfg.compute_cluster,
                 environment=self.entities.Environment(image=cfg.training_image_uri),
                 environment_variables=job_env,

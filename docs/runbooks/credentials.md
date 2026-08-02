@@ -74,13 +74,23 @@ Neon は計測 DB として全 Phase 共通（§1）。
 | `MCML_TF_DBX_JOB_PRINCIPAL` | ジョブ実行プリンシパル | dbx-dev | Doppler |
 | `MCML_TF_SF_GRANT_TO_USER` | ロールの付与先ユーザー | sf-dev | Doppler |
 
-**Vertex AI Experiments への複写（秘密ではない・Doppler に置かない）**:
-`VertexConfig.experiment`（config.yaml の `platforms.vertex.experiment`、または
-env 上書き `MCML_VERTEX_EXPERIMENT` —— 既存の `MCML_<PLATFORM>_<FIELD>` 規約そのもの）。
-**未設定なら複写しない**（既定 OFF）。有効化するとクラウドへの書き込みが増えるため、
-config.yaml で常時 ON にしていない。単一基盤の関心なので共通層（factory / core）には
-一切現れず、実装は `VertexAdapter._tracked` の override に閉じている
-（`src/platforms/vertex/experiment_observer.py` の docstring）。
+**基盤ネイティブの実験追跡（秘密ではない・Doppler に置かない）**:
+`<Platform>Config.experiment` —— config.yaml の `platforms.<platform>.experiment`、または
+env 上書き `MCML_<PLATFORM>_EXPERIMENT`（既存の `MCML_<PLATFORM>_<FIELD>` 規約そのもの）。
+
+**5基盤で形が違う。同じ実装ではない**（実測は `docs/02_architecture.md` の制約表）:
+
+| 基盤 | 形 | 既定 | 載る stage |
+|---|---|---|---|
+| Vertex | 事後 API（`ExperimentRun.create`） | **OFF**（None） | 全 stage |
+| SageMaker | 投入時 `ExperimentConfig` | **OFF**（None） | **学習のみ**（他 API に口が無い） |
+| Azure ML | 投入時 `experiment_name` | 実名（**無効化できない**＝job は常に実験に属す） | 学習ジョブ |
+| Databricks | MLflow のワークスペースパス | 実名（内蔵） | ジョブ |
+| Snowflake | **無い**（フィールド自体を置かない） | — | — |
+
+有効化するとクラウドへの書き込みが増えるので、選べる基盤（Vertex / SageMaker）は既定 OFF。
+単一基盤の関心なので共通層（factory / core）には一切現れない。非対称は
+`tests/platforms/test_experiment_tracking_asymmetry.py` が固定する。
 
 `GOOGLE_CLOUD_PROJECT` も 2026-08-02 から Terraform 入力を兼ねる（§2）。SDK 標準名の env が
 既にあるので `MCML_TF_` を新設せず、そのまま `VAR_SPECS` に載せている。
