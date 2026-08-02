@@ -48,8 +48,16 @@ def build_pipeline(adapter: Any, run_id: str, attempt: int, params_json: str, jo
         display_name="mcml-train",
         experiment_name=adapter._config.experiment,
     )
-    def _pipeline() -> None:
-        # ステップ = CLI 投入とまったく同じ job。ここで組み直さないことが要点
-        adapter.training_job(run_id, attempt, params_json, job_env)
+    def _pipeline() -> dict:
+        # ステップ = CLI 投入とまったく同じ job。ここで組み直さないことが要点。
+        #
+        # **戻り値を返すこと。** `dsl.pipeline` は関数内で「呼ばれた」だけの job を
+        # ステップとして拾わない。返さないと `PipelineJob.jobs` が空のまま作られ、
+        # **投入しても何も動かない**（2026-08-02 に実測。定義は組めたのに空だった）。
+        # `command(...)` は **component（雛形）** を返す。パイプラインの node にするには
+        # **呼び出す**必要がある。呼ばないと `PipelineJob.jobs` が空のまま定義が作られ、
+        # 投入しても何も動かない（2026-08-02 実測。REST payload の jobs も {} だった）。
+        train = adapter.training_job(run_id, attempt, params_json, job_env)()
+        return {"model": train.outputs.model}
 
     return _pipeline()

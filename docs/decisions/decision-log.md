@@ -383,3 +383,26 @@ task note は1タスクに閉じるので「最近このエージェントは曖
 - 教訓: 1基盤で出た結論を他基盤へ転移しない。**見送りの根拠まで含めて制約を確認する。**
 - link: [02_architecture.md 制約表](../02_architecture.md) /
   [修正11 ノート](../tasks/04_verifying/2026-08-02-修正11-マネージドパイプライン載せ替え試行.md)
+
+## 2026-08-02 — 死蔵（実装したが配線しない）を番人で止める
+
+- type: process-fix
+- 何をやらかしたか: AWS / Azure のパイプライン定義を実装し、**呼び出し元ゼロのまま
+  「実装済み」と報告してコミットした**。定義は組めるが投入する口が無く、誰も動かせない。
+  これは §2.3 で自己批判している「port を切ったのに配線しなかった」そのもので、
+  しかも **Vertex のパイプライン実装を撤去した理由と同じ罪**。基準が二重だった。
+- 同時に見つかった実害: Azure は `command()` の戻り値を**呼び出さない**と
+  `PipelineJob.jobs` が空のまま定義が作られる。**投入は成功するのに何も動かない**
+  （REST payload の jobs も `{}`）。配線して実行して初めて分かった。
+- 対応:
+  1. `scripts/run_pipeline.py` + `make pipeline-build` / `pipeline-submit` で配線
+  2. **build と submit を分離**（build はクラウドを叩かない。
+     「定義が組める」を「動く」の証拠にしない —— Vertex の教訓）
+  3. 投入前に**ステップ数を検査**して空定義を弾く
+  4. `tests/platforms/test_no_dead_ports.py` —— 機能モジュールに実行経路からの
+     import があることを **AST で**検査する。最初に文字列 grep で書いたら docstring の
+     言及まで数えて発火せず、配線を外しても緑のままだった（**番人が効くことを
+     実際に外して確かめる**手順で発見）
+- 教訓: 「実装した」と「動かせる」は別。**呼び出し元が無いコードを実装済みと呼ばない。**
+- link: [run_pipeline.py](../../scripts/run_pipeline.py) /
+  [test_no_dead_ports.py](../../tests/platforms/test_no_dead_ports.py)

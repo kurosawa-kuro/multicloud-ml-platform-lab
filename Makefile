@@ -161,6 +161,14 @@ sf-package: stamp-revision ## Snowflake stage 配布用 zip をビルド
 collect-costs: ## cost_snapshots を後追いで埋める（請求反映は1〜2日遅れる）
 	doppler run -- $(PYTHON) scripts/collect_costs.py --all --days 7 --record
 
+pipeline-build: ## マネージドパイプラインの定義を組む（PLATFORM=sagemaker|azureml・課金ゼロ）
+	@test -n "$(PLATFORM)" || { echo "PLATFORM= を指定する（sagemaker|azureml）"; exit 2; }
+	doppler run -- $(PYTHON) scripts/run_pipeline.py $(PLATFORM) build
+
+pipeline-submit: ## ⚠️課金あり: パイプラインを投入（PLATFORM=sagemaker|azureml）
+	@test -n "$(PLATFORM)" || { echo "PLATFORM= を指定する（sagemaker|azureml）"; exit 2; }
+	doppler run -- $(PYTHON) scripts/run_pipeline.py $(PLATFORM) submit
+
 # --- フェーズ実行（Golden Path ステップ2〜3）------------------------------
 # PLATFORM=vertex|sagemaker|azureml|databricks|snowflake
 
